@@ -1,21 +1,48 @@
 import {useEffect, useId, useRef, useState} from 'react';
 import type {Product} from '../api/types';
-import {useHistory} from '../lib/data';
-import {formatAmount, formatClock, formatDateTime, formatPrice} from '../lib/format';
+import {formatDateTime, formatPrice} from '../lib/format';
 import {
-  STATUS_DOT,
   STATUS_LABEL,
+  STATUS_TONE,
+  formatDelta,
   getUiStatus,
-  productDomain,
+  isAtLowest,
+  priceDelta,
   productName,
   safeExternalUrl,
-  storeInitials,
+  storeName,
 } from '../lib/productStatus';
+import {formatRelative} from '../lib/relativeTime';
 import {IconExternal, IconMore, IconRefresh} from './icons';
-import {Sparkline} from './Sparkline';
-import {Dot, Spinner} from './ui';
+import {ProductPhoto} from './ProductPhoto';
+import {RangeMeter} from './RangeMeter';
+import {Sparkline, sparkPoints} from './Sparkline';
+import {Spinner} from './ui';
 
 export const productHref = (id: number) => `/producto?id=${id}`;
+
+export function StatusPill({product, checking}: {product: Product; checking?: boolean}) {
+  if (checking) {
+    return (
+      <span className="pill accent plain">
+        <Spinner />
+        Comprobando…
+      </span>
+    );
+  }
+  const status = getUiStatus(product);
+  return <span className={`pill ${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>;
+}
+
+export function Delta({value}: {value: number | null}) {
+  if (value === null) return null;
+  return (
+    <span className={`delta ${value < 0 ? 'down' : 'up'}`}>
+      {formatDelta(value)}
+      <span className="sr-only">{value < 0 ? ' de bajada' : ' de subida'} desde la lectura anterior</span>
+    </span>
+  );
+}
 
 function CardMenu({product, onCheck, checking}: {product: Product; onCheck: () => void; checking: boolean}) {
   const [open, setOpen] = useState(false);
@@ -105,37 +132,46 @@ interface CardProps {
 }
 
 export function ProductCard({product, checking, onCheck}: CardProps) {
-  const history = useHistory(product.id).data;
-  const status = getUiStatus(product);
   const name = productName(product);
   const hasPrice = product.last_status === 'ok' && product.last_price !== null;
+  const points = sparkPoints(product.spark);
   return (
     <article className="card" aria-busy={checking}>
-      <div className="card-h">
-        <span className="ico" aria-hidden="true">
-          {storeInitials(product.store)}
-        </span>
-        <div style={{minWidth: 0}}>
-          <a className="t" href={productHref(product.id)} title={name}>
-            {name}
-          </a>
-          <small>{productDomain(product.url)}</small>
+      <div className="pv">
+        <ProductPhoto src={product.image_url} title={product.title} width={320} height={200} />
+        <StatusPill product={product} checking={checking} />
+        <span className="store-tag">{storeName(product.store)}</span>
+      </div>
+      <div className="card-b">
+        <a className="t" href={productHref(product.id)} title={name}>
+          {name}
+        </a>
+        <div>
+          <div className="pricerow">
+            {hasPrice ? (
+              <strong>{formatPrice(product.last_price)}</strong>
+            ) : (
+              <strong className="none">{product.last_status === 'unavailable' ? 'Sin stock' : 'Sin precio'}</strong>
+            )}
+            <Delta value={priceDelta(product)} />
+          </div>
+          <p className="target-line">
+            Objetivo <b>{formatPrice(product.desired_price)}</b>
+            {!hasPrice && product.previous_price !== null && <> · último precio {formatPrice(product.previous_price)}</>}
+          </p>
         </div>
-        <CardMenu product={product} onCheck={onCheck} checking={checking} />
+        <RangeMeter product={product} />
+        <Sparkline points={points} target={product.desired_price} />
       </div>
-      <div className="price">
-        <strong>{hasPrice ? formatPrice(product.last_price) : '—'}</strong>
-        <span>objetivo {formatAmount(product.desired_price)}</span>
-      </div>
-      <Sparkline history={history} target={product.desired_price} />
       <div className="card-f">
-        {checking ? <Spinner /> : <Dot tone={STATUS_DOT[status]} />}
-        <span>{checking ? 'Comprobando…' : STATUS_LABEL[status]}</span>
-        <time className="time" dateTime={product.last_checked_at ?? undefined} title={formatDateTime(product.last_checked_at)}>
-          {product.last_checked_at ? formatClock(product.last_checked_at) : 'sin leer'}
+        <time dateTime={product.last_checked_at ?? undefined} title={formatDateTime(product.last_checked_at)}>
+          {product.last_checked_at ? formatRelative(product.last_checked_at) : 'Aún sin leer'}
         </time>
+        {isAtLowest(product) && (product.stats?.checks_count ?? 0) > 1 && (
+          <span className="pill ok plain">Mínimo histórico</span>
+        )}
+        <CardMenu product={product} onCheck={onCheck} checking={checking} />
       </div>
     </article>
   );
 }
-

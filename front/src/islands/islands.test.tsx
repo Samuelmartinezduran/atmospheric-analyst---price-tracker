@@ -89,6 +89,8 @@ describe('páginas privadas', () => {
     routes['/api/summary'] = () =>
       json(200, {
         products: {total: 0, below_target: 0, above_target: 0, unavailable: 0, error: 0, never_checked: 0},
+        alerts: {pending: 0, sent: 2, failed: 1},
+        expected_checks_24h: 0,
         checks_24h: 0,
         failed_checks_24h: 0,
         last_check_at: null,
@@ -100,9 +102,11 @@ describe('páginas privadas', () => {
     render(<ProductsPage />);
 
     expect(await screen.findByRole('heading', {name: 'Productos', level: 1})).toBeInTheDocument();
-    expect(screen.getByText('Sigue un producto nuevo')).toBeInTheDocument();
-    await waitFor(() => expect(calledPaths()).toEqual(expect.arrayContaining(['/api/products', '/api/summary', '/api/alerts'])));
-    expect(await screen.findByText('Te avisamos por correo')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', {name: 'Sigue tu primer producto'})).toBeInTheDocument();
+    await waitFor(() => expect(calledPaths()).toEqual(expect.arrayContaining(['/api/products', '/api/summary'])));
+    expect(await screen.findByText('Aviso por correo activado')).toBeInTheDocument();
+    // Los contadores de alertas salen del resumen, sin pedir la lista de alertas.
+    expect(calledPaths()).not.toContain('/api/alerts');
     expect(nav.replaceLocation).not.toHaveBeenCalled();
   });
 

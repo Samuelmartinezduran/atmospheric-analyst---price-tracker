@@ -4,10 +4,11 @@ import {checkAllProducts, checkProduct} from '../api/products';
 import type {CheckSummary, Product} from '../api/types';
 import {IconGrid, IconHelp, IconPlus, IconRefresh, IconRows, IconSearch} from '../components/icons';
 import {AlertsPanel, RecentReadings, WorkerUsage} from '../components/overviewPanels';
+import {TodayStrip} from '../components/TodayStrip';
 import {PrivatePage} from '../components/PrivatePage';
 import {ProductCard} from '../components/ProductCard';
 import {ErrorNotice, Spinner, Topbar} from '../components/ui';
-import {refreshAfterChange, useAlerts, useProducts, useReadings, useSummary} from '../lib/data';
+import {refreshAfterChange, useProducts, useReadings, useSummary} from '../lib/data';
 import {plural} from '../lib/format';
 import {productDomain, productName} from '../lib/productStatus';
 import {toast} from '../lib/toast';
@@ -50,11 +51,37 @@ export function describeCheck(summary: CheckSummary): string {
   return `${plural(summary.total_products, 'producto comprobado', 'productos comprobados')}: ${parts.join(', ')}.${alerts}`;
 }
 
+/** Sin productos: qué hace la app y cómo empezar. */
+function EmptyState({onAdd}: {onAdd: () => void}) {
+  return (
+    <section className="empty-state" aria-labelledby="empty-h">
+      <svg className="art" viewBox="0 0 140 88" fill="none" aria-hidden="true">
+        <rect x="8" y="10" width="124" height="68" rx="8" stroke="var(--line2)" strokeWidth="1.5" fill="var(--bg2)" />
+        <path d="M22 60 44 46l16 8 22-22 18 10 18-14" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M22 40h96" stroke="var(--line3)" strokeWidth="1.5" strokeDasharray="4 4" />
+        <circle cx="82" cy="32" r="4.5" fill="var(--accent)" stroke="var(--bg)" strokeWidth="2" />
+      </svg>
+      <h2 id="empty-h">Sigue tu primer producto</h2>
+      <p>
+        Pega el enlace de un producto de Amazon ES o PCComponentes y el precio al que lo comprarías. Lo comprobamos cada pocas
+        horas y te avisamos por correo cuando baje.
+      </p>
+      <div className="stores" aria-label="Tiendas admitidas">
+        <span className="pill plain">Amazon ES</span>
+        <span className="pill plain">PCComponentes</span>
+      </div>
+      <button type="button" className="btn" onClick={onAdd}>
+        <IconPlus />
+        Añadir producto
+      </button>
+    </section>
+  );
+}
+
 function Dashboard() {
   const products = useProducts();
   const summary = useSummary();
   const readings = useReadings(6);
-  const alerts = useAlerts();
   const initialQuery = useRef(new URLSearchParams(window.location.search).get('q'));
   const [query, setQuery] = useState(initialQuery.current ?? '');
   const [view, setView] = useState<View>(readView);
@@ -156,7 +183,7 @@ function Dashboard() {
         <div className="dash">
           <aside className="stack" aria-label="Resumen del worker">
             <WorkerUsage summary={summary.data} error={summary.error} onRetry={summary.reload} />
-            <AlertsPanel alerts={alerts.data} summary={summary.data} />
+            <AlertsPanel summary={summary.data} />
             <RecentReadings readings={readings.data} products={products.data} error={readings.error} onRetry={readings.reload} />
           </aside>
           <div style={{minWidth: 0}}>
@@ -198,34 +225,27 @@ function Dashboard() {
                 Añadir…
               </button>
             </div>
-            <div className="split">
-              <h2 className="h">Productos</h2>
-              {products.data && (
+            {products.data && !query && <TodayStrip products={products.data} />}
+            {products.data && total > 0 && (
+              <div className="split">
+                <h2 className="h">Productos</h2>
                 <span className="muted" style={{fontSize: 13}} aria-live="polite">
                   {query ? `${visible.length} de ${total}` : plural(total, 'producto', 'productos')}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
             {products.error && !products.data ? (
               <ErrorNotice error={products.error} onRetry={products.reload} />
             ) : !products.data ? (
               <div className="cards">
-                {[0, 1, 2, 3].map((i) => (
+                {[0, 1, 2].map((i) => (
                   <span key={i} className="sk card" />
                 ))}
               </div>
-            ) : view === 'grid' || total === 0 ? (
+            ) : total === 0 ? (
+              <EmptyState onAdd={() => setAddOpen(true)} />
+            ) : view === 'grid' ? (
               <div className="cards">
-                {!query && (
-                  <div className="new">
-                    <b>Sigue un producto nuevo</b>
-                    <small>Pega un enlace de Amazon ES o PCComponentes y tu precio objetivo.</small>
-                    <button type="button" className="btn sec" style={{justifySelf: 'start'}} onClick={() => setAddOpen(true)}>
-                      <IconPlus />
-                      Añadir producto
-                    </button>
-                  </div>
-                )}
                 {visible.map((product) => (
                   <ProductCard
                     key={product.id}

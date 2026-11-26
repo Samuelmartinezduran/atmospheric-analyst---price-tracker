@@ -1,6 +1,8 @@
-# Atmospheric Analyst
+# Lowmark
 
-Tracker de precios para **Amazon ES** y **PCComponentes**. Pegas el enlace de un producto y el precio que estás dispuesto a pagar. La app lo comprueba cada pocas horas, guarda el historial, te dice si el precio actual es bueno comparado con su mínimo y con la media del último mes, y te manda un email cuando baja de tu objetivo.
+Tracker de precios para **Amazon ES** y **PCComponentes**. El nombre viene de la *low-water mark*, la raya que se pinta en los muelles donde llega el agua en la marea más baja: la app marca el mínimo de cada producto y te avisa cuando el precio baja de tu objetivo.
+
+ Pegas el enlace de un producto y el precio que estás dispuesto a pagar. La app lo comprueba cada pocas horas, guarda el historial, te dice si el precio actual es bueno comparado con su mínimo y con la media del último mes, y te manda un email cuando baja de tu objetivo.
 
 Empezó como mi primer proyecto (marzo de 2026) y en noviembre lo rehíce entero tras una revisión a fondo. La [revisión](docs/REVISION-2026-11.md) y las [decisiones de arquitectura](docs/DECISIONES.md) están documentadas, con los fallos reales que tenía y cómo se resolvieron.
 

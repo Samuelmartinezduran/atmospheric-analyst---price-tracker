@@ -49,7 +49,7 @@ function Brand() {
   return (
     <a className="sb-team" href="/">
       <span className="mark" aria-hidden="true" />
-      <span className="name">Atmospheric Analyst</span>
+      <span className="name">Lowmark</span>
     </a>
   );
 }
@@ -141,7 +141,7 @@ export function SidebarFrame(props: FrameProps) {
         <div className="mbar-row">
           <a className="mbar-brand" href="/">
             <span className="mark" aria-hidden="true" />
-            <span className="name">Atmospheric Analyst</span>
+            <span className="name">Lowmark</span>
           </a>
           <button
             type="button"

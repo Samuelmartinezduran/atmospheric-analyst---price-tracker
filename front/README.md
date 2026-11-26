@@ -53,5 +53,5 @@ src/
 - **Navegación:** `<ClientRouter />` cambia de página sin recargar. La barra lateral persiste (`transition:persist`) y la caché de `lib/cache.ts` sobrevive entre páginas: al volver al panel se pinta al instante y se refresca por detrás.
 - **Sesión:** cada página privada comprueba `/api/auth/me` (con la caché, sin esperar si ya se conoce). Sin sesión va a `/entrar?next=…`; mientras tanto se ve el esqueleto.
 - **CSP:** nada de scripts en línea propios. Los únicos en línea son los de arranque de las islas que genera Astro, y van con hash en `dist/csp-hashes.json`.
-- **Peso:** la página `/` carga menos de 90 KB de JavaScript con gzip. Los diálogos y la vista de lista se descargan al usarlos.
+- **Peso:** la página `/` carga menos de 95 KB de JavaScript con gzip (hoy 92,3 KB; 64 KB son react-dom). Los diálogos y la vista de lista se descargan al usarlos; las fotos de producto, solo cuando se ven.
 - **Sin dependencias de interfaz:** ni Tailwind ni librerías de iconos ni de gráficas; CSS propio, iconos SVG en línea y gráfica SVG propia.

@@ -19,7 +19,7 @@ class ConfigError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    app_name: str = "Atmospheric Analyst"
+    app_name: str = "Lowmark"
     # dev | prod. Fuera de `dev` se exigen secretos reales y se desactivan las ayudas de depuración.
     app_env: str = "dev"
     # URL pública desde la que se abre la app; se usa en los enlaces de los emails.

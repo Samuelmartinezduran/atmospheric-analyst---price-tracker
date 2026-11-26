@@ -43,6 +43,7 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
   const [wrapRef, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const summaryId = useId();
+  const gradientId = `pc${summaryId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const height = width && width < 560 ? 240 : 320;
 
   const model = useMemo(() => {
@@ -68,7 +69,7 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
   const xTicks =
     points.length && points[points.length - 1].time - points[0].time < DAY
       ? [points[0].time]
-      : timeTicks(t0, t1, Math.max(2, Math.floor(plotW / 96)));
+      : timeTicks(t0, t1, Math.max(3, Math.floor(plotW / 80)));
   const step = axis.ticks.length > 1 ? axis.ticks[1] - axis.ticks[0] : 1;
   const yLabel = (value: number) => `${(step < 1 ? axisFormatterDec : axisFormatter).format(value)} €`;
   const ty = y(target);
@@ -138,6 +139,12 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
       <div ref={wrapRef} style={{position: 'relative', height}}>
         {width > 0 && (
           <svg width={width} height={height} aria-hidden="true">
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="var(--accent)" stopOpacity="0.26" />
+                <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
             <g className="gap">
               {gaps.map((gap) => {
                 const gx0 = x(gap.start);
@@ -148,7 +155,7 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
                     <line x1={gx0} x2={gx0} y1={M.top} y2={M.top + plotH} />
                     <line x1={gx1} x2={gx1} y1={M.top} y2={M.top + plotH} />
                     {gx1 - gx0 > 84 && (
-                      <text x={(gx0 + gx1) / 2} y={M.top + 16} textAnchor="middle">
+                      <text x={(gx0 + gx1) / 2} y={M.top + plotH - 10} textAnchor="middle">
                         sin lecturas
                       </text>
                     )}
@@ -175,7 +182,12 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
             </g>
             {segments.map((segment) =>
               segment.length > 1 ? (
-                <path key={`a${segment[0].time}`} className="area" d={areaPath(segment, x, y, M.top + plotH)} />
+                <path
+                  key={`a${segment[0].time}`}
+                  className="area"
+                  fill={`url(#${gradientId})`}
+                  d={areaPath(segment, x, y, M.top + plotH)}
+                />
               ) : null,
             )}
             {segments.slice(1).map((segment, i) => {
@@ -188,7 +200,7 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
             {segments.map((segment) => (
               <path key={`l${segment[0].time}`} className="line" d={linePath(segment, x, y)} />
             ))}
-            {points.length <= 80 &&
+            {points.length <= 40 &&
               points.map((point) => <circle key={point.time} className="pt" cx={x(point.time)} cy={y(point.price)} r={2.5} />)}
             {targetVisible && (
               <g className="target">
@@ -202,6 +214,7 @@ export function PriceChart({history, target}: {history: HistoryPoint[]; target: 
             {current && (
               <g className="cursor">
                 <line x1={cx} x2={cx} y1={M.top} y2={M.top + plotH} />
+                <line x1={M.left} x2={M.left + plotW} y1={y(current.price)} y2={y(current.price)} />
                 <circle cx={cx} cy={y(current.price)} r={4.5} />
               </g>
             )}

@@ -69,6 +69,8 @@ export interface Product {
   last_checked_at: string | null;
   is_below_target: boolean;
   stats: ProductStats | null;
+  /** Últimas 30 lecturas con precio, en orden cronológico: `[fechaISO, precio]`. */
+  spark?: [string, number][];
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +122,9 @@ export interface SummaryCounts {
 /** `GET /api/summary`: columna izquierda del panel. */
 export interface Summary {
   products: SummaryCounts;
+  alerts: {pending: number; sent: number; failed: number};
+  /** Lecturas que tocaban en 24 h según el intervalo del worker. */
+  expected_checks_24h: number;
   checks_24h: number;
   failed_checks_24h: number;
   last_check_at: string | null;

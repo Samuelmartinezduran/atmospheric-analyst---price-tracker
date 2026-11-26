@@ -1,9 +1,9 @@
 /** Claves de la caché y ganchos de datos compartidos entre páginas. */
 import {listAlerts} from '../api/alerts';
 import {getSummary, listReadings} from '../api/overview';
-import {getHistory, listProducts} from '../api/products';
+import {getHistory, getProduct, listProducts} from '../api/products';
 import type {Alert, HistoryPoint, Product, Reading, Summary} from '../api/types';
-import {invalidate, useResource} from './cache';
+import {getResource, invalidate, seed, useResource} from './cache';
 
 export const KEYS = {
   products: 'products',
@@ -12,6 +12,7 @@ export const KEYS = {
   stores: 'stores',
   sessions: 'sessions',
   admin: 'admin',
+  product: (id: number) => `product:${id}`,
   history: (id: number) => `history:${id}`,
   readings: (limit: number, productId?: number) => `readings:${productId ?? 'all'}:${limit}`,
 };
@@ -24,6 +25,16 @@ export const useSummary = (enabled = true) =>
 
 export const useAlerts = (enabled = true) =>
   useResource<Alert[]>(KEYS.alerts, () => listAlerts(), {enabled, freshFor: 15_000});
+
+/** Un producto: `GET /api/products/{id}`, sembrado con la lista si ya se tenía (pinta al instante). */
+export function useProduct(id: number | null) {
+  const key = id === null ? null : KEYS.product(id);
+  if (key && id !== null && !getResource(key).updatedAt) {
+    const fromList = getResource<Product[]>(KEYS.products).data?.find((p) => p.id === id);
+    if (fromList && !getResource(key).data) seed(key, fromList);
+  }
+  return useResource<Product>(key, () => getProduct(id!), {freshFor: 5_000});
+}
 
 export const useHistory = (id: number | null, enabled = true) =>
   useResource<HistoryPoint[]>(id === null ? null : KEYS.history(id), () => getHistory(id!), {
@@ -43,5 +54,5 @@ export const useReadings = (limit: number, productId?: number, enabled = true) =
  */
 export function refreshAfterChange(productId?: number): void {
   invalidate('readings', 'alerts', 'summary', 'products', 'admin');
-  if (productId !== undefined) invalidate(KEYS.history(productId));
+  if (productId !== undefined) invalidate(KEYS.history(productId), KEYS.product(productId));
 }

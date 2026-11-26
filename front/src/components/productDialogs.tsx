@@ -145,6 +145,7 @@ export function EditTargetDialog({product, open, onClose}: {product: Product; op
     try {
       const updated = await updateProduct(product.id, {desired_price: parsed});
       mutate<Product[]>(KEYS.products, (list) => list?.map((p) => (p.id === updated.id ? updated : p)));
+      mutate<Product>(KEYS.product(updated.id), updated);
       refreshAfterChange(updated.id);
       toast.success(`Objetivo actualizado a ${formatPrice(updated.desired_price)}.`);
       onClose();

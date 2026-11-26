@@ -60,7 +60,7 @@ Nueva migración: `docker compose run --rm web alembic revision -m "descripcion"
 - **Alertas:** un error de lectura no toca `was_below_desired`; quedarse sin stock sí. Ver `services/price_check_service.py`.
 - **Configuración:** una variable nueva va en `core/config.py` y en `.env.example`. No repetir valores por defecto en `docker-compose.yml`.
 - **Secretos:** nada de valores por defecto que funcionen fuera de `APP_ENV=dev`.
-- **Frontend:** nada de Tailwind, Recharts ni librerías de iconos; CSS propio con tokens en `src/styles/global.css` y SVG propios. Presupuesto: JS de `/` por debajo de 90 KB con gzip (hoy 89,1 KB; casi todo es react-dom). Un script en línea nuevo exige rehacer `npm run build` para que su hash entre en la CSP.
+- **Frontend:** nada de Tailwind, Recharts ni librerías de iconos; CSS propio con tokens en `src/styles/global.css` y SVG propios. Presupuesto: JS de `/` por debajo de 95 KB con gzip (hoy 92,3 KB; casi todo es react-dom). Un script en línea nuevo exige rehacer `npm run build` para que su hash entre en la CSP.
 - **Idioma:** identificadores en inglés; comentarios, docstrings, mensajes de error y toda la interfaz en español con tildes.
 
 ## Añadir una tienda

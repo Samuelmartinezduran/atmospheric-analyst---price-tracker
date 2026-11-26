@@ -19,6 +19,10 @@ export async function createProduct(url: string, desiredPrice: number) {
   return {product: data, created: status === 201};
 }
 
+export function getProduct(id: number, signal?: AbortSignal) {
+  return api<Product>(`${BASE}/${id}`, {signal});
+}
+
 export function updateProduct(id: number, changes: {desired_price?: number}) {
   return api<Product>(`${BASE}/${id}`, {method: 'PATCH', body: changes});
 }

@@ -1,10 +1,10 @@
 import type {Product} from '../api/types';
-import {useHistory} from '../lib/data';
-import {formatAmount, formatClock, formatDateTime, formatPrice} from '../lib/format';
-import {STATUS_DOT, STATUS_LABEL, getUiStatus, productDomain, productName, storeInitials} from '../lib/productStatus';
-import {productHref} from './ProductCard';
-import {Sparkline} from './Sparkline';
-import {Dot, Spinner} from './ui';
+import {formatDateTime, formatPrice} from '../lib/format';
+import {priceDelta, productName, storeName} from '../lib/productStatus';
+import {formatRelative} from '../lib/relativeTime';
+import {Delta, StatusPill, productHref} from './ProductCard';
+import {ProductPhoto} from './ProductPhoto';
+import {Sparkline, sparkPoints} from './Sparkline';
 
 /** Vista de lista: una tabla con las mismas columnas que la tarjeta. */
 export function ProductTable({products, isChecking}: {products: Product[]; isChecking: (id: number) => boolean}) {
@@ -21,7 +21,7 @@ export function ProductTable({products, isChecking}: {products: Product[]; isChe
             <th scope="col" className="r">
               Objetivo
             </th>
-            <th scope="col" className="hide-sm" style={{width: 140}}>
+            <th scope="col" className="hide-sm" style={{width: 130}}>
               Tendencia
             </th>
             <th scope="col">Estado</th>
@@ -41,40 +41,36 @@ export function ProductTable({products, isChecking}: {products: Product[]; isChe
 }
 
 function ProductRow({product, checking}: {product: Product; checking: boolean}) {
-  const history = useHistory(product.id).data;
-  const status = getUiStatus(product);
   const name = productName(product);
+  const points = sparkPoints(product.spark);
   return (
     <tr>
       <td className="name">
         <div style={{display: 'flex', gap: 10, alignItems: 'center', minWidth: 0}}>
-          <span className="ico" aria-hidden="true" style={{width: 28, height: 28, fontSize: 11}}>
-            {storeInitials(product.store)}
-          </span>
+          <ProductPhoto src={product.image_url} title={product.title} width={40} height={40} className="thumb" />
           <div style={{minWidth: 0}}>
             <a href={productHref(product.id)} title={name}>
               {name}
             </a>
-            <span className="sub">{productDomain(product.url)}</span>
+            <span className="sub">{storeName(product.store)}</span>
           </div>
         </div>
       </td>
-      <td className="r nowrap" style={{fontWeight: 600}}>
-        {product.last_status === 'ok' ? formatPrice(product.last_price) : '—'}
+      <td className="r nowrap">
+        <span style={{fontWeight: 600}}>{product.last_status === 'ok' ? formatPrice(product.last_price) : '—'}</span>
+        <br />
+        <Delta value={priceDelta(product)} />
       </td>
-      <td className="r nowrap mono muted">{formatAmount(product.desired_price)}</td>
-      <td className="hide-sm" style={{width: 140}}>
-        <Sparkline history={history} target={product.desired_price} />
+      <td className="r nowrap muted num">{formatPrice(product.desired_price)}</td>
+      <td className="hide-sm" style={{width: 130}}>
+        {points.length >= 3 ? <Sparkline points={points} target={product.desired_price} /> : <span className="muted">—</span>}
       </td>
       <td className="nowrap">
-        <span className="status">
-          {checking ? <Spinner /> : <Dot tone={STATUS_DOT[status]} />}
-          {checking ? 'Comprobando…' : STATUS_LABEL[status]}
-        </span>
+        <StatusPill product={product} checking={checking} />
       </td>
-      <td className="r">
+      <td className="r nowrap">
         <time className="time" dateTime={product.last_checked_at ?? undefined} title={formatDateTime(product.last_checked_at)}>
-          {product.last_checked_at ? formatClock(product.last_checked_at) : 'sin leer'}
+          {product.last_checked_at ? formatRelative(product.last_checked_at) : 'sin leer'}
         </time>
       </td>
     </tr>

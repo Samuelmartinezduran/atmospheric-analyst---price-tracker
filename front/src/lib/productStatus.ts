@@ -1,8 +1,19 @@
 import type {Product, Store} from '../api/types';
+import {formatPrice} from './format';
 
-export type UiStatus = 'pending' | 'above' | 'below' | 'unavailable' | 'error';
+export type UiStatus = 'pending' | 'above' | 'rising' | 'below' | 'unavailable' | 'error';
 
-export function getUiStatus(product: Pick<Product, 'last_status' | 'is_below_target'>): UiStatus {
+/** Diferencia del último precio con el anterior, en euros; `null` sin cambio o sin datos. */
+export function priceDelta(product: Pick<Product, 'last_status' | 'last_price' | 'previous_price'>): number | null {
+  const {last_price: current, previous_price: previous} = product;
+  if (product.last_status !== 'ok' || typeof current !== 'number' || typeof previous !== 'number') return null;
+  const delta = Math.round((current - previous) * 100) / 100;
+  return Math.abs(delta) < 0.005 ? null : delta;
+}
+
+export function getUiStatus(
+  product: Pick<Product, 'last_status' | 'is_below_target' | 'last_price' | 'previous_price'>,
+): UiStatus {
   switch (product.last_status) {
     case 'never_checked':
       return 'pending';
@@ -10,27 +21,39 @@ export function getUiStatus(product: Pick<Product, 'last_status' | 'is_below_tar
       return 'unavailable';
     case 'error':
       return 'error';
-    default:
-      return product.is_below_target ? 'below' : 'above';
+    default: {
+      if (product.is_below_target) return 'below';
+      const delta = priceDelta(product);
+      return delta !== null && delta > 0 ? 'rising' : 'above';
+    }
   }
 }
 
 export const STATUS_LABEL: Record<UiStatus, string> = {
   pending: 'Pendiente',
   above: 'Por encima',
+  rising: 'Subiendo',
   below: 'A tu precio',
   unavailable: 'Agotado',
   error: 'Error',
 };
 
-/** Clase del punto de estado: verde, ámbar, rojo o gris. */
-export const STATUS_DOT: Record<UiStatus, '' | 'ok' | 'warn' | 'err'> = {
-  pending: '',
-  above: 'warn',
+export type Tone = 'ok' | 'err' | 'rise' | 'neutral' | 'gray' | 'accent';
+
+/** Tono de la pastilla de estado. */
+export const STATUS_TONE: Record<UiStatus, Tone> = {
+  pending: 'gray',
+  above: 'neutral',
+  rising: 'rise',
   below: 'ok',
-  unavailable: '',
+  unavailable: 'gray',
   error: 'err',
 };
+
+/** «↓ 110,11 €» o «↑ 392,17 €». */
+export function formatDelta(delta: number): string {
+  return `${delta < 0 ? '↓' : '↑'} ${formatPrice(Math.abs(delta))}`;
+}
 
 export function productName(product: Pick<Product, 'title' | 'url'>): string {
   return product.title?.trim() || product.url;
@@ -83,11 +106,34 @@ export function detectStore(rawUrl: string, stores: Store[]): Store | null {
 }
 
 /** Solo enlaces http(s) se abren en una pestaña nueva (nada de `javascript:`). */
-export function safeExternalUrl(url: string): string | undefined {
+export function safeExternalUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined;
   } catch {
     return undefined;
   }
+}
+
+export type Category = 'gpu' | 'phone' | 'ram' | 'generic';
+
+/** Categoría aproximada por el título, para el dibujo de respaldo cuando no hay foto. */
+export function productCategory(title: string | null | undefined): Category {
+  const t = title ?? '';
+  if (/\b(rtx|gtx|geforce|radeon|rx\s?\d{4}|tarjeta gr[aá]fica|gpu)\b/i.test(t)) return 'gpu';
+  if (/\b(iphone|galaxy|pixel|xiaomi|redmi|m[oó]vil|smartphone|tel[eé]fono)\b/i.test(t)) return 'phone';
+  if (/\b(ddr[345]|ram|memoria|so-?dimm|dimm)\b/i.test(t)) return 'ram';
+  return 'generic';
+}
+
+/** ¿El precio actual es el mínimo histórico? */
+export function isAtLowest(product: Pick<Product, 'last_status' | 'last_price' | 'stats'>): boolean {
+  const lowest = product.stats?.lowest_price;
+  return (
+    product.last_status === 'ok' &&
+    typeof product.last_price === 'number' &&
+    typeof lowest === 'number' &&
+    Math.abs(product.last_price - lowest) < 0.005
+  );
 }

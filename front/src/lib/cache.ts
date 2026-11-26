@@ -92,6 +92,12 @@ export function invalidate(...prefixes: string[]): void {
   }
 }
 
+/** Datos provisionales (por ejemplo, el producto sacado de la lista): se pintan, pero se revalidan al montar. */
+export function seed<T>(key: string, data: T): void {
+  const previous = states.get(key) ?? EMPTY;
+  states.set(key, {...previous, data, updatedAt: 0});
+}
+
 /** Borra todo (al cerrar sesión). */
 export function clearCache(): void {
   states.clear();

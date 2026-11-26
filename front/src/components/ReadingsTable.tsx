@@ -1,13 +1,19 @@
 import type {Product, Reading} from '../api/types';
 import {formatDateTime, formatPrice} from '../lib/format';
-import {describeReadingChange} from '../lib/readings';
+import {formatDelta} from '../lib/productStatus';
+import {describeReadingChange, isAtTarget} from '../lib/readings';
 import {productHref} from './ProductCard';
-import {Dot} from './ui';
+import {ProductPhoto} from './ProductPhoto';
 
-const STATUS_TEXT: Record<string, string> = {ok: 'Con precio', unavailable: 'Sin stock', error: 'Error'};
+function statusPill(reading: Reading): [string, string] {
+  if (reading.status === 'error') return ['err', 'Error'];
+  if (reading.status === 'unavailable') return ['gray', 'Sin stock'];
+  if (isAtTarget(reading)) return ['ok', 'A tu precio'];
+  return ['', 'Con precio'];
+}
 
 /**
- * Lecturas como una lista de despliegues: punto de estado, precio, cambio y fecha.
+ * Lecturas como una lista de despliegues: estado, precio, cambio en color y fecha.
  * Con `showProduct` añade la columna del producto (feed de /lecturas).
  */
 export function ReadingsTable({
@@ -21,7 +27,7 @@ export function ReadingsTable({
   showProduct?: boolean;
   caption: string;
 }) {
-  const lowest = new Map(products?.map((p) => [p.id, p.stats?.lowest_price ?? null]));
+  const byId = new Map(products?.map((p) => [p.id, p]));
   return (
     <div className="table-wrap">
       <table className={`t rt${showProduct ? ' rt-p' : ''}`}>
@@ -41,26 +47,35 @@ export function ReadingsTable({
         </thead>
         <tbody>
           {readings.map((reading) => {
-            const change = describeReadingChange(reading, lowest.get(reading.product_id));
-            const statusDot = reading.status === 'error' ? 'err' : reading.status === 'unavailable' ? '' : change.dot;
+            const product = byId.get(reading.product_id);
+            const change = describeReadingChange(reading, product?.stats?.lowest_price);
+            const [tone, label] = statusPill(reading);
+            const colored = change.delta !== null && change.delta !== 0 && change.kind !== 'first';
             return (
               <tr key={reading.id}>
                 <td className="nowrap c-st">
-                  <span className="status">
-                    <Dot tone={statusDot} />
-                    <span className="txt">{STATUS_TEXT[reading.status] ?? reading.status}</span>
+                  <span className={`pill ${tone}`}>
+                    <span className="txt">{label}</span>
                   </span>
                 </td>
                 {showProduct && (
                   <td className="name c-pd">
-                    <a href={productHref(reading.product_id)}>{reading.product_title || 'Producto sin nombre'}</a>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 10, minWidth: 0}}>
+                      <ProductPhoto src={product?.image_url} title={reading.product_title} width={28} height={28} className="thumb" />
+                      <a href={productHref(reading.product_id)}>{reading.product_title || 'Producto sin nombre'}</a>
+                    </div>
                   </td>
                 )}
-                <td className="r nowrap c-pr" style={{fontWeight: 600}}>
+                <td className="r nowrap c-pr num" style={{fontWeight: 600}}>
                   {reading.price !== null ? formatPrice(reading.price) : <span className="muted">—</span>}
                 </td>
                 <td className={`c-ch ${reading.error_message ? 'err-msg' : 'muted'}`}>
-                  {change.label}
+                  {colored ? (
+                    <span className={`delta ${change.delta! < 0 ? 'down' : 'up'}`}>{formatDelta(change.delta!)}</span>
+                  ) : (
+                    change.label
+                  )}
+                  {colored && change.kind === 'lowest' && <span className="pill ok plain" style={{marginLeft: 8}}>Mínimo histórico</span>}
                   {reading.error_message && (
                     <>
                       {': '}
