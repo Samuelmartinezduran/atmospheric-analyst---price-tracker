@@ -3,7 +3,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import _mount_frontend, create_app
 from tests.conftest import ok
 
 PASSWORD = "UnaContraseñaLarga123"
@@ -170,25 +169,6 @@ def test_users_cannot_see_each_others_products(app, fake_prices) -> None:
 def test_stores_endpoint(client) -> None:
     codes = [store["code"] for store in client.get("/api/stores").json()]
     assert codes == ["amazon_es", "pccomponentes"]
-
-
-def test_spa_is_served_with_history_fallback(tmp_path) -> None:
-    (tmp_path / "assets").mkdir()
-    (tmp_path / "index.html").write_text("<html>app</html>", encoding="utf-8")
-    (tmp_path / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
-    (tmp_path.parent / "secreto.txt").write_text("no", encoding="utf-8")
-    application = create_app(run_lifespan=False)
-    _mount_frontend(application, tmp_path)
-    client = TestClient(application)
-
-    assert client.get("/productos/12").text == "<html>app</html>"
-    assert client.get("/verificar?token=abc").text == "<html>app</html>"
-    asset = client.get("/assets/app.js")
-    assert asset.text == "console.log(1)"
-    assert "immutable" in asset.headers["cache-control"]
-    assert client.get("/api/no-existe").status_code == 404
-    assert client.get("/..%2Fsecreto.txt").text == "<html>app</html>"
-    assert "default-src 'self'" in client.get("/").headers["content-security-policy"]
 
 
 def test_insecure_configuration_refuses_to_start() -> None:

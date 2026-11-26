@@ -99,6 +99,28 @@ Los emails llevan enlaces a `/verificar?token=…` y `/restablecer?token=…`.
 
 El rol no se concede desde la API: `docker compose exec web python -m app.cli crear-admin tu@email.com`.
 
+## Resumen y lecturas (columna izquierda del panel)
+
+`GET /api/summary` →
+
+```json
+{
+  "products": {"total": 6, "below_target": 1, "above_target": 3, "unavailable": 2, "error": 0, "never_checked": 0},
+  "checks_24h": 6,
+  "failed_checks_24h": 0,
+  "last_check_at": "2026-11-26T19:21:18Z",
+  "next_check_at": "2026-11-27T01:21:18Z",
+  "check_interval_minutes": 360,
+  "email_enabled": true
+}
+```
+
+Solo cuenta los productos activos del usuario. `next_check_at` es cuándo le toca al producto que lleva más tiempo sin comprobarse (si hay alguno sin comprobar, ahora mismo); `null` sin productos.
+
+`GET /api/readings?limit=20&product_id=12` → `Reading[]`, más recientes primero (`limit` de 1 a 200; `product_id` opcional, 404 si no es tuyo).
+
+`Reading`: `{id, product_id, product_title, store, price, previous_price, desired_price, status, error_message, checked_at}`. `previous_price` es el precio de la lectura correcta anterior de ese producto (para mostrar subidas y bajadas); `price` es `null` si la lectura falló o no había stock.
+
 ## Salud
 
 `GET /api/health` → `{"status": "ok"}`
