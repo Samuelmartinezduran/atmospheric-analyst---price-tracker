@@ -14,6 +14,9 @@ from app.services.email_service import EmailError, send_price_alert_email
 logger = logging.getLogger(__name__)
 
 BASE_RETRY_DELAY = timedelta(minutes=5)
+# Un aviso de bajada de precio de hace días ya no sirve (el precio puede haber vuelto a subir).
+# Pasa, por ejemplo, si el correo estuvo desactivado un tiempo y luego se activa.
+MAX_ALERT_AGE = timedelta(hours=48)
 
 
 @dataclass
@@ -21,6 +24,7 @@ class AlertDeliverySummary:
     sent: int = 0
     retried: int = 0
     failed: int = 0
+    expired: int = 0
 
 
 def _now() -> datetime:
@@ -50,6 +54,16 @@ def deliver_pending_alerts(session: Session, now: datetime | None = None, limit:
     alerts = list(session.scalars(query).all())
 
     for alert in alerts:
+        triggered_at = (
+            alert.triggered_at if alert.triggered_at.tzinfo else alert.triggered_at.replace(tzinfo=timezone.utc)
+        )
+        if now - triggered_at > MAX_ALERT_AGE:
+            alert.status = "failed"
+            alert.error_message = "Caducada: no se envió en las 48 horas siguientes a la bajada de precio."
+            alert.next_attempt_at = None
+            summary.expired += 1
+            session.commit()
+            continue
         product = session.get(Product, alert.product_id)
         alert.attempts += 1
         alert.last_attempt_at = now

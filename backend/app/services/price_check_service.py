@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import Alert, PriceHistory, Product
 from app.scrapers import BrowserSession, ScrapeResult, scraper_for_store
+from app.scrapers.urls import UnsupportedUrlError, normalize_product_url
 from app.services.alert_rules import next_below_state, should_create_alert
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,8 @@ def apply_check_result(
     return alert
 
 
-def _try_lock(session: Session, product_id: int) -> bool:
+def try_lock_product(session: Session, product_id: int) -> bool:
+    """Bloqueo del producto hasta el final de la transacción actual (no espera)."""
     if session.get_bind().dialect.name != "postgresql":
         return True
     return bool(
@@ -157,11 +159,23 @@ def _try_lock(session: Session, product_id: int) -> bool:
     )
 
 
+def _validated_url(product: Product) -> str:
+    """Vuelve a validar la URL guardada antes de abrirla con el navegador.
+
+    Las filas creadas con el código antiguo podían tener URLs que hoy se rechazan
+    (p. ej. ``http://169.254.169.254/?x=amazon.es``).
+    """
+    store, canonical = normalize_product_url(product.url)
+    if store.code != product.store:
+        raise UnsupportedUrlError("La URL guardada no corresponde a la tienda del producto.")
+    return canonical
+
+
 def check_product(session: Session, product_id: int, fetch: Fetcher) -> PriceCheckSummary:
     """Comprueba un producto en su propia transacción. Nunca lanza por errores de lectura."""
     summary = PriceCheckSummary(total_products=1)
     try:
-        if not _try_lock(session, product_id):
+        if not try_lock_product(session, product_id):
             summary.skipped = 1
             session.rollback()
             return summary
@@ -172,10 +186,20 @@ def check_product(session: Session, product_id: int, fetch: Fetcher) -> PriceChe
             session.rollback()
             return summary
 
+        try:
+            _validated_url(product)
+        except UnsupportedUrlError as exc:
+            logger.warning("Producto %s desactivado: URL no válida (%s)", product_id, exc)
+            product.is_active = False
+            product.last_status = "error"
+            product.last_error = f"URL no válida; el producto se ha desactivado. {exc}"[:2000]
+            session.commit()
+            summary.checked_failed = 1
+            return summary
+
         result, error = None, None
         try:
-            scraper = scraper_for_store(product.store)
-            if scraper is None:
+            if scraper_for_store(product.store) is None:
                 raise ValueError(f"Tienda no soportada: {product.store}")
             result = fetch(product)
         except Exception as exc:  # noqa: BLE001 - cualquier fallo de lectura se registra en el producto
@@ -183,12 +207,14 @@ def check_product(session: Session, product_id: int, fetch: Fetcher) -> PriceChe
             error = exc
 
         alert = apply_check_result(session, product, result, error, _now())
+        # Se calcula antes del commit: después, leer el producto recargaría la fila.
+        succeeded = error is None and product.last_status == "ok"
         session.commit()
     except Exception:
         session.rollback()
         raise
 
-    if error is None and product.last_status == "ok":
+    if succeeded:
         summary.checked_ok = 1
     else:
         summary.checked_failed = 1
@@ -206,7 +232,8 @@ def check_products(
     """Comprueba varios productos con un único navegador.
 
     ``fetch`` permite inyectar un lector falso en los tests; si no se pasa, se
-    abre un ``BrowserSession`` real.
+    abre un ``BrowserSession`` real. Un fallo inesperado en un producto (por
+    ejemplo, que lo borren mientras se comprueba) no corta la ronda.
     """
     ids = list(product_ids)
     summary = PriceCheckSummary()
@@ -222,11 +249,15 @@ def check_products(
         if fetch is None:
 
             def fetch(product: Product) -> ScrapeResult:  # noqa: F811
-                scraper = scraper_for_store(product.store)
-                return scraper.fetch(product.url, browser)
+                return scraper_for_store(product.store).fetch(_validated_url(product), browser)
 
         for product_id in ids:
-            summary.merge(check_product(session, product_id, fetch))
+            try:
+                summary.merge(check_product(session, product_id, fetch))
+            except Exception:  # noqa: BLE001
+                logger.exception("Error inesperado con el producto %s; sigo con los demás.", product_id)
+                session.rollback()
+                summary.merge(PriceCheckSummary(total_products=1, checked_failed=1))
     return summary
 
 

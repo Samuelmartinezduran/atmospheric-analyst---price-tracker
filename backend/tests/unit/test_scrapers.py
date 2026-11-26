@@ -123,7 +123,10 @@ class TestPcComponentes:
         assert self.scraper.parse_from_html(html).price == Decimal("99.90")
 
     def test_falls_back_to_visible_spanish_price(self) -> None:
-        html = pcc_page(None, "<h1>RAM</h1><span id='pdp-price-current-integer'>1.429,95€</span>")
+        html = pcc_page(
+            None,
+            "<h1>RAM</h1><div id='pdp-price-current-integer'>1.429<span>,</span><span>95</span> €</div>",
+        )
         assert self.scraper.parse_from_html(html).price == Decimal("1429.95")
 
     def test_no_price_is_an_error(self) -> None:

@@ -121,3 +121,44 @@ def test_inactive_products_are_not_checked(session, make_user) -> None:
     summary = check_products(session, [product.id], fetch=scripted_fetch(ok("1")))
     assert summary.total_products == 0
     assert session.scalar(select(Product.last_status).where(Product.id == product.id)) == "never_checked"
+
+
+def test_stored_dangerous_url_is_never_opened_and_gets_deactivated(session, make_user) -> None:
+    """Regresión: filas creadas con el código antiguo podían apuntar a direcciones internas."""
+    user = make_user()
+    product = Product(
+        user_id=user.id,
+        url="http://169.254.169.254/latest/meta-data/?x=amazon.es",
+        store="amazon_es",
+        desired_price=Decimal("10"),
+        currency="EUR",
+        last_status="ok",
+    )
+    session.add(product)
+    session.commit()
+    opened = []
+    summary = check_products(session, [product.id], fetch=lambda p: opened.append(p.url))
+    session.refresh(product)
+    assert opened == []
+    assert summary.checked_failed == 1
+    assert product.is_active is False
+    assert "URL no válida" in product.last_error
+
+
+def test_product_deleted_during_its_check_does_not_abort_the_round(session_factory, session, make_user) -> None:
+    user = make_user()
+    a = upsert_product(session, "https://www.amazon.es/dp/B000000001", Decimal("50"), owner=user).product
+    b = upsert_product(session, "https://www.amazon.es/dp/B000000002", Decimal("50"), owner=user).product
+    a_id, b_id = a.id, b.id
+
+    def fetch(product):
+        if product.id == a_id:
+            with session_factory() as other:
+                other.delete(other.get(Product, a_id))
+                other.commit()
+        return ok("40")
+
+    summary = check_products(session, [a_id, b_id], fetch=fetch)
+    assert summary.checked_failed == 1
+    assert summary.checked_ok == 1
+    assert session.get(Product, b_id).last_status == "ok"

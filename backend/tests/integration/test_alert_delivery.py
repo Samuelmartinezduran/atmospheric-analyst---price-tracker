@@ -31,6 +31,7 @@ def pending_alert(session, make_user) -> Alert:
         currency="EUR",
         status="pending",
         attempts=0,
+        triggered_at=NOW,
     )
     session.add(alert)
     session.commit()
@@ -67,6 +68,15 @@ def test_failed_delivery_is_retried_with_backoff_then_given_up(session, pending_
     session.refresh(pending_alert)
     assert (pending_alert.status, pending_alert.attempts) == ("failed", 3)
     assert "SMTP caído" in pending_alert.error_message
+
+
+def test_old_alerts_expire_instead_of_being_sent(session, pending_alert, email_on, monkeypatch) -> None:
+    sent = []
+    monkeypatch.setattr(alert_service, "send_price_alert_email", lambda **kwargs: sent.append(kwargs))
+    summary = alert_service.deliver_pending_alerts(session, now=NOW + timedelta(days=3))
+    session.refresh(pending_alert)
+    assert (summary.expired, sent, pending_alert.status) == (1, [], "failed")
+    assert "Caducada" in pending_alert.error_message
 
 
 def test_nothing_is_sent_when_email_is_disabled(session, pending_alert, monkeypatch) -> None:

@@ -1,95 +1,58 @@
-import React from 'react';
-import {X, PlusCircle, Bell, RefreshCw, Settings, LineChart} from 'lucide-react';
+import type {ElementType} from 'react';
+import {Bell, Pencil, PlusCircle, RefreshCw} from 'lucide-react';
+import {Modal} from './Modal';
+import {Button} from './ui';
 
-interface HelpModalProps {
-  onClose: () => void;
-}
-
-const steps: {icon: React.ElementType; title: string; body: string}[] = [
+const STEPS: {icon: ElementType; title: string; body: string}[] = [
   {
     icon: PlusCircle,
     title: 'Añadir un producto',
-    body: 'En el panel derecho pega la URL de un producto de Amazon ES o PCComponentes, fija el precio objetivo y haz clic en "Save product". El sistema hará la primera comprobación en breve.',
+    body: 'En el panel, pega la URL de un producto de una tienda compatible y fija el precio objetivo. Al guardarlo se comprueba el precio por primera vez.',
+  },
+  {
+    icon: RefreshCw,
+    title: 'Comprobar precios',
+    body: 'Los precios se comprueban solos cada cierto tiempo. Si no quieres esperar, usa «Comprobar todos» en el panel o «Comprobar ahora» en el detalle de un producto.',
   },
   {
     icon: Bell,
     title: 'Recibir alertas',
-    body: 'Cuando el precio cae por debajo de tu precio objetivo recibirás un email automático. Las alertas también quedan registradas en la sección "Alerts History" de la barra lateral.',
+    body: 'Cuando el precio baja de tu objetivo te llega un email. Todas las alertas, enviadas o no, quedan en «Alertas».',
   },
   {
-    icon: RefreshCw,
-    title: 'Actualizar precios',
-    body: 'Usa "Update now" en el dashboard para lanzar una comprobación manual de todos tus productos, o el botón de refresco en el panel de detalle para comprobar uno solo.',
-  },
-  {
-    icon: Settings,
-    title: 'Cambiar precio objetivo',
-    body: 'Selecciona un producto en la lista, ve a la pestaña "Edit Alert" en el panel de detalle y guarda el nuevo precio. La alerta se disparará la próxima vez que el precio cruce ese umbral hacia abajo.',
+    icon: Pencil,
+    title: 'Cambiar el objetivo',
+    body: 'Abre un producto y pulsa «Editar objetivo». Si el precio ya está por debajo, lo verás marcado en el panel, pero no se manda un email por ello.',
   },
 ];
 
-export function HelpModal({onClose}: HelpModalProps) {
+export function HelpModal({open, onClose, storeNames}: {open: boolean; onClose: () => void; storeNames: string[]}) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Cómo funciona"
+      footer={<Button onClick={onClose}>Entendido</Button>}
     >
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-
-      {/* Panel */}
-      <div
-        className="relative z-10 w-full max-w-lg bg-surface-container-lowest rounded-3xl shadow-2xl border border-outline-variant/10 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-outline-variant/10">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl primary-gradient flex items-center justify-center text-white shadow">
-              <LineChart size={18} />
+      <ol className="space-y-5">
+        {STEPS.map(({icon: Icon, title, body}) => (
+          <li key={title} className="flex gap-4">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <Icon size={16} className="text-primary" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="font-manrope font-extrabold text-on-surface text-base">Centro de ayuda</h2>
-              <p className="text-[11px] text-on-surface-variant font-semibold">Atmospheric Analyst · Price Tracker</p>
+              <p className="mb-0.5 text-sm font-bold text-on-surface">{title}</p>
+              <p className="text-sm leading-relaxed text-on-surface-variant">{body}</p>
             </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
-            aria-label="Cerrar ayuda"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Steps */}
-        <div className="px-6 py-5 space-y-4">
-          {steps.map(({icon: Icon, title, body}) => (
-            <div key={title} className="flex gap-4">
-              <div className="shrink-0 w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center mt-0.5">
-                <Icon size={16} className="text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-on-surface mb-0.5">{title}</p>
-                <p className="text-xs text-on-surface-variant leading-relaxed">{body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-outline-variant/10 bg-surface-container-low/50 flex items-center justify-between">
-          <p className="text-[11px] text-on-surface-variant font-medium">
-            Tiendas soportadas: <span className="font-bold text-on-surface">Amazon ES, PCComponentes</span>
-          </p>
-          <button
-            onClick={onClose}
-            className="text-xs font-bold text-primary hover:text-primary/80 transition-colors"
-          >
-            Entendido
-          </button>
-        </div>
-      </div>
-    </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-6 text-xs text-on-surface-variant">
+        Tiendas compatibles:{' '}
+        <span className="font-bold text-on-surface">
+          {storeNames.length > 0 ? storeNames.join(', ') : 'Amazon ES, PCComponentes'}
+        </span>
+      </p>
+    </Modal>
   );
 }

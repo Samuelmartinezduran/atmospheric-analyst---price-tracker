@@ -151,16 +151,25 @@ def register_user(
     user_agent: str | None = None,
 ) -> tuple[User, str]:
     normalized_email = normalize_email(email)
+    # El hash se calcula siempre, exista o no la cuenta: así el tiempo de respuesta no lo delata.
+    password_hash = hash_password(password)
     existing_user = session.scalar(select(User).where(User.email == normalized_email))
-    if existing_user:
+    if existing_user and (existing_user.is_email_verified or not existing_user.is_active):
         raise AccountExistsError("Ya existe una cuenta para ese email.")
 
-    user = User(
-        email=normalized_email,
-        password_hash=hash_password(password),
-        is_email_verified=False,
-        is_active=True,
-    )
+    if existing_user:
+        # Cuenta sin verificar: gana el último registro. Su contraseña sustituye a la anterior y
+        # los enlaces antiguos dejan de valer. Antes, quien registraba primero un email ajeno
+        # dejaba puesta SU contraseña y la activaba la víctima al verificar.
+        user = existing_user
+        user.password_hash = password_hash
+    else:
+        user = User(
+            email=normalized_email,
+            password_hash=password_hash,
+            is_email_verified=False,
+            is_active=True,
+        )
     try:
         session.add(user)
         session.flush()

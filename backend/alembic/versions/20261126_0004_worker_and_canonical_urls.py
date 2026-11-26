@@ -29,13 +29,26 @@ down_revision: Union[str, Sequence[str], None] = "20260323_0003"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-_ASIN = re.compile(r"/(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})(?:[/?]|$)", re.IGNORECASE)
+_ASIN = re.compile(r"/(?:dp|gp/product|gp/aw/d|exec/obidos/asin)/([A-Z0-9]{10})(?:[/?]|$)", re.IGNORECASE)
+
+
+_HOSTS = {
+    "amazon_es": ("amazon.es", "www.amazon.es", "m.amazon.es", "smile.amazon.es"),
+    "pccomponentes": ("pccomponentes.com", "www.pccomponentes.com"),
+}
 
 
 def _canonical(url: str, store: str) -> str | None:
+    candidate = url.strip()
+    if "://" not in candidate:
+        # El código antiguo guardaba la URL tal cual, también sin esquema.
+        candidate = "https://" + candidate
     try:
-        parts = urlsplit(url.strip())
+        parts = urlsplit(candidate)
     except ValueError:
+        return None
+    # Solo se canonicaliza si el host es de verdad de la tienda; lo demás lo desactiva la 0005.
+    if (parts.hostname or "").lower().rstrip(".") not in _HOSTS.get(store, ()):
         return None
     if store == "amazon_es":
         match = _ASIN.search(parts.path)
@@ -72,7 +85,8 @@ def upgrade() -> None:
     for product_id in losers:
         bind.execute(
             sa.text(
-                "UPDATE products SET is_active = false, url = url || '#duplicado-' || CAST(id AS TEXT) WHERE id = :id"
+                "UPDATE products SET is_active = false, "
+                "url = LEFT(url, 2000) || '#duplicado-' || CAST(id AS TEXT) WHERE id = :id"
             ),
             {"id": product_id},
         )

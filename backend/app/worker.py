@@ -37,12 +37,13 @@ def run_round() -> None:
                 summary.skipped,
             )
         delivery = deliver_pending_alerts(session)
-        if delivery.sent or delivery.retried or delivery.failed:
+        if delivery.sent or delivery.retried or delivery.failed or delivery.expired:
             logger.info(
-                "Alertas: %s enviadas, %s por reintentar, %s descartadas.",
+                "Alertas: %s enviadas, %s por reintentar, %s descartadas, %s caducadas.",
                 delivery.sent,
                 delivery.retried,
                 delivery.failed,
+                delivery.expired,
             )
 
 

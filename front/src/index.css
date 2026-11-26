@@ -3,8 +3,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-manrope: "Manrope", sans-serif;
-  --font-inter: "Inter", sans-serif;
+  --font-manrope: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-inter: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   --color-primary: #0053dc;
   --color-primary-container: #3e76fe;
@@ -15,6 +15,8 @@
   --color-surface-container-highest: #dce4e8;
   --color-on-surface: #2c3437;
   --color-on-surface-variant: #596064;
+  /* Ámbar para texto: el de tertiary-container no llega al contraste mínimo sobre blanco. */
+  --color-tertiary: #8a5100;
   --color-tertiary-container: #f8a010;
   --color-on-tertiary-container: #4a2c00;
   --color-error: #a83836;
@@ -37,8 +39,25 @@
 }
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-surface text-on-surface font-inter;
+    @apply bg-surface text-on-surface font-inter antialiased;
+  }
+
+  /* Foco visible y coherente en toda la aplicación (solo con teclado). */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline-offset: 0;
   }
 
   .dark {
@@ -51,6 +70,7 @@
     --color-surface-container-highest: #373e47;
     --color-on-surface: #e6edf3;
     --color-on-surface-variant: #8b949e;
+    --color-tertiary: #f2b252;
     --color-tertiary-container: #d4820a;
     --color-on-tertiary-container: #ffe8b0;
     --color-error: #f85149;
@@ -64,14 +84,16 @@
 }
 
 .dark .primary-gradient {
-  background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%);
+  background: linear-gradient(135deg, #1f6feb 0%, #4493f8 100%);
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-}
-
-.dark .glass-panel {
-  background: rgba(28, 33, 40, 0.85);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

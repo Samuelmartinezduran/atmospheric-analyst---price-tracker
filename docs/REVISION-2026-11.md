@@ -30,7 +30,7 @@ Revisión completa del MVP de marzo-abril de 2026 (el primer proyecto de Samuel)
 | L6 | El mismo producto con otro `?ref=` contaba como producto distinto. | ✅ URLs canónicas (Amazon por ASIN); la migración 0004 normaliza las existentes. |
 | L7 | `X-Forwarded-For` se aceptaba sin más, y con eso cualquiera se saltaba el límite de intentos. | ✅ Solo con `TRUST_PROXY_HEADERS=true`. |
 | L8 | Registrar un email existente devolvía 409, lo que revelaba qué emails tienen cuenta. | ✅ El mensaje es el mismo exista o no. También se iguala el tiempo de respuesta del login. |
-| L9 | En PCComponentes ningún selector CSS funcionaba: solo lo salvaba el JSON-LD. Además, «no disponible» en cualquier parte de la página la marcaba sin stock. | ✅ El JSON-LD es la fuente principal, incluida la disponibilidad; los selectores quedan de respaldo. |
+| L9 | En PCComponentes ningún selector CSS funcionaba: solo lo salvaba el JSON-LD. Además, «no disponible» en cualquier parte de la página la marcaba sin stock y la disponibilidad del JSON-LD se ignoraba. Comprobado el 26/11: la RTX 5070 seguida salía «en stock a 1.099,95 €» cuando la tienda la marca `OutOfStock` y no tiene botón de compra. | ✅ El JSON-LD es la fuente principal, incluida la disponibilidad; `#pdp-price-current-integer` queda de respaldo (es lo que lee la página del iPhone, que no trae JSON-LD de producto). |
 | L10 | En Amazon se cogía el primer `span.a-price` de la página, que podía ser el de un producto recomendado. | ✅ Solo se mira dentro de la caja de compra; el captcha se detecta como bloqueo. |
 | L11 | Un título con saltos de línea rompía el asunto del email. | ✅ El asunto se limpia antes de enviar. |
 

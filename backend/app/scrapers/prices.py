@@ -47,8 +47,11 @@ def parse_price(raw: str | int | float | None, fmt: PriceFormat) -> Decimal:
         text = repr(raw)
     elif isinstance(raw, int):
         text = str(raw)
-    else:
+    elif isinstance(raw, str):
         text = raw
+    else:
+        # El JSON-LD a veces trae objetos o listas donde debería haber un número.
+        raise PriceParseError(f"Precio con un tipo inesperado: {type(raw).__name__}")
 
     try:
         cents = precio.parse_cents(text, fmt.value)

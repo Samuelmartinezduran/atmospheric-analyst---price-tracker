@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend + Rust
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # La etapa `test` compila el crate de Rust (y pasa `cargo test`) antes de instalarlo.
+      - name: Construir la imagen de tests
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
+          tags: atmospheric-analyst:test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Lint
+        run: |
+          docker run --rm atmospheric-analyst:test ruff check app tests alembic
+          docker run --rm atmospheric-analyst:test ruff format --check app tests alembic
+      - name: Tests
+        run: docker run --rm atmospheric-analyst:test
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: front
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test --if-present
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  image:
+    name: Imagen completa
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          tags: atmospheric-analyst:latest
+          cache-from: type=gha

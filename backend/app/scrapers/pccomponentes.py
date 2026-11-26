@@ -64,7 +64,8 @@ class PcComponentesScraper(BaseStoreScraper):
         for selector in ("#pdp-price-current-integer", "[data-testid='price-current']", ".price-current"):
             node = soup.select_one(selector)
             if node:
-                price = try_parse_price(node.get_text(" ", strip=True), PriceFormat.ES)
+                # La parte entera, la coma y los céntimos van en elementos distintos: se unen sin espacios.
+                price = try_parse_price(node.get_text("", strip=True), PriceFormat.ES)
                 if price is not None:
                     return price
         return None

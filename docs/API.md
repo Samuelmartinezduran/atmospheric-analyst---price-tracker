@@ -21,14 +21,16 @@ Todo cuelga de `/api` en el mismo origen que el frontend (ver D3 en `DECISIONES.
 | POST | `/refresh` | — | 200 `{user}` y cookies nuevas · 401 |
 | POST | `/logout` | — | 200 `{message}` |
 | GET | `/me` | — | 200 `User` · 401 |
-| POST | `/change-password` | `{current_password, new_password}` | 200 `{message}` · 400 |
+| POST | `/change-password` | `{current_password, new_password}` | 200 `{message}` · 400 si la actual no es correcta (nunca 401). Cierra las demás sesiones; la actual sigue con sus cookies. |
 | POST | `/forgot-password` | `{email}` | 200 `{message, debug_token}` (mensaje uniforme) · 429 |
 | POST | `/reset-password` | `{token, new_password}` | 200 `{message}` · 400 |
-| GET | `/sessions` | — | 200 `{sessions: Session[]}` |
+| GET | `/sessions` | — | 200 `{sessions: Session[]}` (solo las no revocadas) |
 | POST | `/sessions/revoke-others` | — | 200 `{message, revoked_count}` |
 
 `User`: `{id, email, is_email_verified, is_active, created_at}`
 `Session`: `{id, ip_address, user_agent, expires_at, revoked_at, created_at, is_current}`
+
+El único 403 posible en `/login` es «email sin verificar»: la comprobación CSRF solo se aplica con sesión abierta. Los 429 traen `Retry-After` en segundos. `debug_token` es `null` fuera de `dev`.
 
 Los emails llevan enlaces a `/verificar?token=…` y `/restablecer?token=…`.
 
@@ -67,14 +69,14 @@ Los emails llevan enlaces a `/verificar?token=…` y `/restablecer?token=…`.
 }
 ```
 
-`stats.*` pueden ser `null` si aún no hay precios.
+`stats` siempre es un objeto; sus campos pueden ser `null` si aún no hay precios. `lowest_price` y `highest_price` son de todo el historial; `avg_price_30d`, de los últimos 30 días; `checks_count` cuenta solo las comprobaciones con precio (las fallidas y sin stock no).
 
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
 | GET | `/api/products` | — | 200 `Product[]` (más recientes primero) |
 | POST | `/api/products` | `{url, desired_price}` | 201 `Product` (nuevo; ya trae la primera comprobación) · 200 si ya existía (se actualiza el objetivo) · 400 URL no soportada |
 | PATCH | `/api/products/{id}` | `{desired_price?}` | 200 `Product` · 404 |
-| DELETE | `/api/products/{id}` | — | 204 · 404 |
+| DELETE | `/api/products/{id}` | — | 204 (borra también su historial y sus alertas) · 404 |
 | GET | `/api/products/{id}/history` | — | 200 `HistoryPoint[]` (orden cronológico) |
 | POST | `/api/products/{id}/check` | — | 200 `CheckSummary` · 404 · 409 si ya se está comprobando |
 | POST | `/api/jobs/check-now` | — | 200 `CheckSummary` (todos los productos del usuario) |

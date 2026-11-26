@@ -44,6 +44,9 @@ services:
   worker:
     <<: *app
     command: ["python", "-m", "app.worker"]
+    # El healthcheck de la imagen comprueba la API HTTP, que el worker no tiene.
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy

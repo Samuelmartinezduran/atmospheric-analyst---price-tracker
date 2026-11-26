@@ -10,7 +10,7 @@ from functools import lru_cache
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-INSECURE_DEFAULT_SECRET = "dev-only-insecure-secret-change-me"
+MIN_SECRET_LENGTH = 32
 INSECURE_DEFAULT_DB_PASSWORD = "dev-only-password"
 
 
@@ -29,13 +29,16 @@ class Settings(BaseSettings):
     database_url: str = f"postgresql+psycopg2://tracker:{INSECURE_DEFAULT_DB_PASSWORD}@db:5432/tracker"
 
     # --- Sesiones ---
-    auth_jwt_secret: str = INSECURE_DEFAULT_SECRET
+    # Obligatorio SIEMPRE (también en dev), mínimo 32 caracteres. Sin valor por defecto:
+    # un secreto vacío o de ejemplo permite fabricar sesiones de cualquier usuario.
+    auth_jwt_secret: str = ""
     auth_access_token_ttl_minutes: int = 15
     auth_refresh_token_ttl_days: int = 30
     auth_email_token_ttl_hours: int = 24
     auth_password_reset_ttl_minutes: int = 30
-    # Solo se respeta con APP_ENV=dev: devuelve los tokens de verificación y
-    # recuperación en la respuesta para poder probar sin servidor de correo.
+    # Solo se respeta con APP_ENV=dev y EMAIL_ENABLED=false: devuelve los tokens de
+    # verificación y recuperación en la respuesta para poder probar sin servidor de correo.
+    # Quien pueda llegar a la app puede tomar cualquier cuenta: úsalo solo en local.
     auth_enable_debug_tokens: bool = False
     auth_login_max_attempts: int = 5
     auth_login_window_minutes: int = 15
@@ -85,7 +88,7 @@ class Settings(BaseSettings):
 
     @property
     def debug_tokens_enabled(self) -> bool:
-        return self.is_dev and self.auth_enable_debug_tokens
+        return self.is_dev and self.auth_enable_debug_tokens and not self.email_enabled
 
     @model_validator(mode="after")
     def _validate(self) -> "Settings":
@@ -109,17 +112,15 @@ class Settings(BaseSettings):
         return self
 
     def assert_safe_for_runtime(self) -> None:
-        """Se llama al arrancar la API y el worker. Fuera de dev no se toleran secretos de ejemplo."""
-        if self.is_dev:
-            return
-        problems = []
-        if self.auth_jwt_secret == INSECURE_DEFAULT_SECRET or len(self.auth_jwt_secret) < 32:
-            problems.append("AUTH_JWT_SECRET (mínimo 32 caracteres, no el de ejemplo)")
-        if INSECURE_DEFAULT_DB_PASSWORD in self.database_url:
-            problems.append("la contraseña de la base de datos")
-        if problems:
+        """Se llama al arrancar la API y el worker."""
+        if len(self.auth_jwt_secret.strip()) < MIN_SECRET_LENGTH:
             raise ConfigError(
-                "Configuración insegura con APP_ENV=" + self.app_env + ": cambia " + ", ".join(problems) + "."
+                f"AUTH_JWT_SECRET tiene que tener al menos {MIN_SECRET_LENGTH} caracteres (también en dev). "
+                'Genera uno con: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        if not self.is_dev and INSECURE_DEFAULT_DB_PASSWORD in self.database_url:
+            raise ConfigError(
+                f"Configuración insegura con APP_ENV={self.app_env}: cambia la contraseña de la base de datos."
             )
 
 

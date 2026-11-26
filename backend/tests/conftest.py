@@ -13,6 +13,7 @@ os.environ.update(
         "EMAIL_ENABLED": "false",
         "DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "FRONTEND_DIST_DIR": "",
+        "AUTH_JWT_SECRET": "secreto-de-tests-con-mas-de-32-caracteres-0123456789",
     }
 )
 

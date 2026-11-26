@@ -8,10 +8,15 @@ from sqlalchemy.orm import Session
 from app.db.models import PriceHistory, Product, User
 from app.scrapers.urls import normalize_product_url
 from app.services.alert_rules import next_below_state
+from app.services.price_check_service import try_lock_product
 
 
 class ProductNotFoundError(LookupError):
     pass
+
+
+class ProductBusyError(RuntimeError):
+    """Se está comprobando ahora mismo; cambiarlo a la vez daría alertas incoherentes."""
 
 
 @dataclass
@@ -85,8 +90,16 @@ def get_owned_product(session: Session, product_id: int, owner: User) -> Product
     return product
 
 
-def update_product(session: Session, product_id: int, owner: User, desired_price: Decimal | None) -> Product:
+def _lock_owned_product(session: Session, product_id: int, owner: User) -> Product:
     product = get_owned_product(session, product_id, owner)
+    if not try_lock_product(session, product_id):
+        session.rollback()
+        raise ProductBusyError(product_id)
+    return product
+
+
+def update_product(session: Session, product_id: int, owner: User, desired_price: Decimal | None) -> Product:
+    product = _lock_owned_product(session, product_id, owner)
     if desired_price is not None:
         set_desired_price(product, desired_price)
     session.commit()
@@ -114,7 +127,7 @@ def get_product_history(session: Session, product_id: int, owner: User) -> list[
 
 
 def delete_product(session: Session, product_id: int, owner: User) -> None:
-    product = get_owned_product(session, product_id, owner)
+    product = _lock_owned_product(session, product_id, owner)
     session.delete(product)
     session.commit()
 

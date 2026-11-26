@@ -60,6 +60,8 @@ def test_machine_prices(raw, expected: str) -> None:
         "1,234.56",  # formato inglés en una tienda española: se rechaza en vez de adivinar
         "19,999",
         "1.000.000,00 €",  # fuera de rango
+        "649 99 €",  # espacios fuera de su sitio: antes daba 64.999 €
+        "1 2 3",
     ],
 )
 def test_invalid_spanish_prices(raw: str) -> None:
@@ -67,7 +69,9 @@ def test_invalid_spanish_prices(raw: str) -> None:
         parse_price(raw, ES)
 
 
-@pytest.mark.parametrize("raw", ["1.099,95", "1,099.95", "abc", "", None, True, "-1", "0", "0.001", "1e3"])
+@pytest.mark.parametrize(
+    "raw", ["1.099,95", "1,099.95", "abc", "", None, True, "-1", "0", "0.001", "1e3", {"@value": "649"}, ["649"]]
+)
 def test_invalid_machine_prices(raw) -> None:
     with pytest.raises(PriceParseError):
         parse_price(raw, MACHINE)

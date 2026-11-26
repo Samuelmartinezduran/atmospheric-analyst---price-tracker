@@ -164,39 +164,50 @@ fn round_half_even(cents: i64, tail: &str) -> i64 {
 }
 
 /// `1.099,95`, `2.499`, `19,99`, `1 099,95`, `649`.
+///
+/// El separador de miles puede ser punto o espacio, pero solo uno de los dos y solo
+/// entre grupos de tres cifras: «649 99» o «1 2 3» se rechazan.
 fn parse_es(text: &str) -> Result<i64, PriceError> {
-    // Los espacios también pueden separar miles («1 099,95»).
-    let compact: String = text.chars().filter(|c| *c != ' ').collect();
-    let (int_part, decimals) = match compact.split_once(',') {
+    let (int_part, decimals) = match text.split_once(',') {
         Some((int_part, decimals)) => {
             if decimals.is_empty() || decimals.len() > 2 || !all_ascii_digits(decimals) {
                 return Err(PriceError::InvalidEs);
             }
             (int_part, decimals)
         }
-        None => (compact.as_str(), ""),
+        None => (text, ""),
     };
 
-    let digits = if int_part.contains('.') {
-        // Miles con punto: primer grupo de 1 a 3 cifras y el resto de exactamente 3.
-        let mut groups = int_part.split('.');
-        let first = groups.next().unwrap_or_default();
-        if first.is_empty() || first.len() > 3 || !all_ascii_digits(first) {
-            return Err(PriceError::InvalidEs);
-        }
-        let mut joined = first.to_string();
-        for group in groups {
-            if group.len() != 3 || !all_ascii_digits(group) {
+    let separator = match (int_part.contains('.'), int_part.contains(' ')) {
+        (true, true) => return Err(PriceError::InvalidEs),
+        (true, false) => Some('.'),
+        (false, true) => Some(' '),
+        (false, false) => None,
+    };
+
+    let digits = match separator {
+        Some(sep) => {
+            // Primer grupo de 1 a 3 cifras y el resto de exactamente 3.
+            let mut groups = int_part.split(sep);
+            let first = groups.next().unwrap_or_default();
+            if first.is_empty() || first.len() > 3 || !all_ascii_digits(first) {
                 return Err(PriceError::InvalidEs);
             }
-            joined.push_str(group);
+            let mut joined = first.to_string();
+            for group in groups {
+                if group.len() != 3 || !all_ascii_digits(group) {
+                    return Err(PriceError::InvalidEs);
+                }
+                joined.push_str(group);
+            }
+            joined
         }
-        joined
-    } else {
-        if !all_ascii_digits(int_part) {
-            return Err(PriceError::InvalidEs);
+        None => {
+            if !all_ascii_digits(int_part) {
+                return Err(PriceError::InvalidEs);
+            }
+            int_part.to_string()
         }
-        int_part.to_string()
     };
 
     let euros = digits_to_i64(&digits)?;
@@ -258,11 +269,17 @@ mod tests {
         assert_eq!(es("1\u{202f}099,95 €"), Ok(109_995));
         assert_eq!(es("  89,00 euros "), Ok(8_900));
         assert_eq!(es("EUR 49,90"), Ok(4_990));
+        assert_eq!(es("1 099,95 €"), Ok(109_995));
+        assert_eq!(es("12 345 678,00"), Err(PriceError::OutOfRange));
     }
 
     #[test]
     fn spanish_rejections() {
-        for raw in ["", "  ", "sin precio", "12.5", "1.23,45", "1,234.56", "19,999", "0,00", "-5,00", "1.000.000,00"] {
+        for raw in [
+            "", "  ", "sin precio", "12.5", "1.23,45", "1,234.56", "19,999", "0,00", "-5,00", "1.000.000,00",
+            // Espacios fuera de su sitio (encontrado en la revisión): antes «649 99 €» daba 64.999 €.
+            "649 99 €", "19 99", "1 2 3", "1.099 999,00", "1 099 ,95",
+        ] {
             assert!(es(raw).is_err(), "debería rechazar {raw:?}");
         }
     }
@@ -324,6 +341,12 @@ mod tests {
         #[test]
         fn spanish_round_trip(cents in 1_i64..MAX_CENTS_EXCLUSIVE, grouped: bool) {
             prop_assert_eq!(es(&format_es(cents, grouped, true)), Ok(cents));
+        }
+
+        #[test]
+        fn space_grouping_round_trip(cents in 1_i64..MAX_CENTS_EXCLUSIVE) {
+            let text = format_es(cents, true, true).replace('.', " ");
+            prop_assert_eq!(es(&text), Ok(cents));
         }
 
         #[test]

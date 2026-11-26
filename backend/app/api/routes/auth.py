@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentSession, CurrentUser, get_client_ip, get_user_agent
@@ -94,6 +94,35 @@ def _debug(token: str | None) -> str | None:
     return token if (token and settings.debug_tokens_enabled) else None
 
 
+def _enforce_rate_limit(db: Session, throttle_key: str, message: str) -> None:
+    """Cuenta un intento y corta con 429 si se pasa del límite de la ventana."""
+    try:
+        decision = check_recovery_rate_limit(db, throttle_key)
+        if decision.allowed:
+            # Se cuenta este intento; el que llega al tope aún pasa y se corta el siguiente.
+            register_recovery_attempt(db, throttle_key)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=message,
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+
+
+def _send_later(background: BackgroundTasks, sender, email: str, token: str) -> None:
+    """Envía el correo después de responder: el tiempo de respuesta no delata si la cuenta existe."""
+
+    def task() -> None:
+        try:
+            sender(email, token)
+        except EmailError:
+            logger.exception("No se pudo enviar un correo de cuenta")
+
+    background.add_task(task)
+
+
 REGISTER_MESSAGE_EMAIL = "Si el email es válido, te hemos enviado un enlace para activar la cuenta."
 REGISTER_MESSAGE_DEV = "Cuenta creada. Sin correo configurado: usa el token de desarrollo para verificarla."
 
@@ -102,62 +131,48 @@ REGISTER_MESSAGE_DEV = "Cuenta creada. Sin correo configurado: usa el token de d
 def register(
     payload: RegisterRequest,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db_session),
 ) -> AuthMessageResponse:
+    client_ip = get_client_ip(request)
+    _enforce_rate_limit(
+        db,
+        build_email_action_throttle_key(client_ip, "-", "register"),
+        "Demasiados registros desde esta conexión. Inténtalo más tarde.",
+    )
+    message = REGISTER_MESSAGE_EMAIL if settings.email_enabled else REGISTER_MESSAGE_DEV
     try:
         user, raw_verification_token = register_user(
             db,
             email=payload.email,
             password=payload.password,
-            ip_address=get_client_ip(request),
+            ip_address=client_ip,
             user_agent=get_user_agent(request),
         )
     except AccountExistsError:
         # Respuesta idéntica a la de una cuenta nueva: no se revela qué emails están registrados.
-        return AuthMessageResponse(message=REGISTER_MESSAGE_EMAIL if settings.email_enabled else REGISTER_MESSAGE_DEV)
+        return AuthMessageResponse(message=message)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     if settings.email_enabled:
-        try:
-            send_verification_email(user.email, raw_verification_token)
-        except EmailError:
-            logger.exception("No se pudo enviar el email de verificación a la cuenta %s", user.id)
-        return AuthMessageResponse(message=REGISTER_MESSAGE_EMAIL, debug_token=_debug(raw_verification_token))
-    return AuthMessageResponse(message=REGISTER_MESSAGE_DEV, debug_token=_debug(raw_verification_token))
+        _send_later(background, send_verification_email, user.email, raw_verification_token)
+    return AuthMessageResponse(message=message, debug_token=_debug(raw_verification_token))
 
 
 @router.post("/resend-verification", response_model=AuthMessageResponse)
 def resend_verification(
     payload: ResendVerificationRequest,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db_session),
 ) -> AuthMessageResponse:
     client_ip = get_client_ip(request)
-    throttle_key = build_email_action_throttle_key(client_ip, payload.email, "resend_verification")
-    try:
-        pre_check = check_recovery_rate_limit(db, throttle_key)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-
-    if not pre_check.allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Demasiadas solicitudes de verificación. Inténtalo más tarde.",
-            headers={"Retry-After": str(pre_check.retry_after_seconds)},
-        )
-
-    try:
-        after_register = register_recovery_attempt(db, throttle_key)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-    if not after_register.allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Demasiadas solicitudes de verificación. Inténtalo más tarde.",
-            headers={"Retry-After": str(after_register.retry_after_seconds)},
-        )
-
+    _enforce_rate_limit(
+        db,
+        build_email_action_throttle_key(client_ip, payload.email, "resend_verification"),
+        "Demasiadas solicitudes de verificación. Inténtalo más tarde.",
+    )
     try:
         raw_token = resend_email_verification(
             db,
@@ -169,11 +184,7 @@ def resend_verification(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     if raw_token and settings.email_enabled:
-        try:
-            send_verification_email(payload.email, raw_token)
-        except EmailError:
-            logger.exception("No se pudo reenviar el email de verificación")
-
+        _send_later(background, send_verification_email, payload.email, raw_token)
     return AuthMessageResponse(
         message="Si la cuenta existe y no está verificada, te hemos enviado un enlace nuevo.",
         debug_token=_debug(raw_token),
@@ -417,33 +428,15 @@ def change_my_password(
 def forgot_password(
     payload: ForgotPasswordRequest,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db_session),
 ) -> AuthMessageResponse:
     client_ip = get_client_ip(request)
-    throttle_key = build_email_action_throttle_key(client_ip, payload.email, "forgot_password")
-    try:
-        pre_check = check_recovery_rate_limit(db, throttle_key)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-
-    if not pre_check.allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Demasiadas solicitudes de recuperación. Inténtalo más tarde.",
-            headers={"Retry-After": str(pre_check.retry_after_seconds)},
-        )
-
-    try:
-        after_register = register_recovery_attempt(db, throttle_key)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-    if not after_register.allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Demasiadas solicitudes de recuperación. Inténtalo más tarde.",
-            headers={"Retry-After": str(after_register.retry_after_seconds)},
-        )
-
+    _enforce_rate_limit(
+        db,
+        build_email_action_throttle_key(client_ip, payload.email, "forgot_password"),
+        "Demasiadas solicitudes de recuperación. Inténtalo más tarde.",
+    )
     try:
         raw_token = request_password_reset(
             db,
@@ -455,11 +448,7 @@ def forgot_password(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     if raw_token and settings.email_enabled:
-        try:
-            send_password_reset_email(payload.email, raw_token)
-        except EmailError:
-            logger.exception("No se pudo enviar el email de recuperación")
-
+        _send_later(background, send_password_reset_email, payload.email, raw_token)
     # Mensaje uniforme para no revelar qué emails tienen cuenta.
     return AuthMessageResponse(
         message="Si hay una cuenta con ese email, te hemos enviado un enlace para cambiar la contraseña.",

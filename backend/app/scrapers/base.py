@@ -97,6 +97,9 @@ class BrowserSession:
             )
             try:
                 page = context.new_page()
+                # Cualquier navegación (redirecciones incluidas) a un host que no sea de la tienda
+                # se corta ANTES de hacer la petición; comprobar solo la URL final llega tarde.
+                page.route("**/*", _block_foreign_navigation)
                 page.goto(url, wait_until="domcontentloaded", timeout=self.settings.scraper_timeout_ms)
                 if not is_allowed_final_url(page.url):
                     # No se reintenta: una redirección fuera de la tienda no se arregla sola.
@@ -118,6 +121,13 @@ class BrowserSession:
                 logger.info("Reintentando %s (intento %s de %s): %s", url, attempt + 1, max_attempts, last_error)
                 time.sleep(1.5 * attempt)
         raise ScraperError(f"No se pudo cargar la página tras {max_attempts} intentos: {last_error}")
+
+
+def _block_foreign_navigation(route, request) -> None:
+    if request.is_navigation_request() and not is_allowed_final_url(request.url):
+        route.abort("blockedbyclient")
+    else:
+        route.continue_()
 
 
 class BaseStoreScraper(ABC):

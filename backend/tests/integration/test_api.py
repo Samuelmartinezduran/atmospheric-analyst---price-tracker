@@ -82,19 +82,49 @@ def test_wrong_password_is_401_and_unknown_email_looks_the_same(client) -> None:
     assert wrong.json() == unknown.json()
 
 
-def test_registering_an_existing_email_does_not_reveal_it(client) -> None:
-    first = client.post("/api/auth/register", json={"email": "ya@example.com", "password": PASSWORD})
-    second = client.post("/api/auth/register", json={"email": "ya@example.com", "password": PASSWORD})
-    assert first.status_code == second.status_code == 201
-    assert first.json()["message"] == second.json()["message"]
-    assert second.json()["debug_token"] is None
+def test_registering_a_verified_email_does_not_reveal_it(client) -> None:
+    sign_up(client, "ya@example.com")
+    client.cookies.clear()
+    again = client.post("/api/auth/register", json={"email": "ya@example.com", "password": PASSWORD})
+    fresh = client.post("/api/auth/register", json={"email": "nueva@example.com", "password": PASSWORD})
+    assert again.status_code == fresh.status_code == 201
+    assert again.json()["message"] == fresh.json()["message"]
+    assert again.json()["debug_token"] is None
 
 
-def test_debug_tokens_only_exist_in_dev(monkeypatch) -> None:
+def test_squatting_an_unverified_email_does_not_steal_the_account(client) -> None:
+    """Regresión: quien registraba primero un email ajeno dejaba puesta su contraseña."""
+    attacker = client.post(
+        "/api/auth/register", json={"email": "victima@example.com", "password": "del-atacante-123456"}
+    )
+    victim = client.post("/api/auth/register", json={"email": "victima@example.com", "password": PASSWORD})
+    old_token, new_token = attacker.json()["debug_token"], victim.json()["debug_token"]
+    assert client.post("/api/auth/verify-email", json={"token": old_token}).status_code == 400
+    assert client.post("/api/auth/verify-email", json={"token": new_token}).status_code == 200
+    assert (
+        client.post("/api/auth/login", json={"email": "victima@example.com", "password": PASSWORD}).status_code == 200
+    )
+    client.cookies.clear()
+    stolen = client.post("/api/auth/login", json={"email": "victima@example.com", "password": "del-atacante-123456"})
+    assert stolen.status_code == 401
+
+
+def test_register_is_rate_limited_per_connection(client) -> None:
+    codes = [
+        client.post("/api/auth/register", json={"email": f"spam{i}@example.com", "password": PASSWORD}).status_code
+        for i in range(7)
+    ]
+    assert codes[:5] == [201] * 5
+    assert codes[-1] == 429
+
+
+def test_debug_tokens_only_exist_in_dev_without_email() -> None:
     from app.core.config import Settings
 
     assert Settings(app_env="dev", auth_enable_debug_tokens=True).debug_tokens_enabled is True
     assert Settings(app_env="prod", auth_enable_debug_tokens=True).debug_tokens_enabled is False
+    with_email = Settings(app_env="dev", auth_enable_debug_tokens=True, email_enabled=True, smtp_sender="a@b.es")
+    assert with_email.debug_tokens_enabled is False
 
 
 def test_products_require_a_session(client) -> None:
@@ -200,14 +230,51 @@ def test_spa_is_served_with_history_fallback(tmp_path) -> None:
     assert "default-src 'self'" in client.get("/").headers["content-security-policy"]
 
 
-def test_insecure_defaults_refuse_to_start_outside_dev() -> None:
+def test_insecure_configuration_refuses_to_start() -> None:
     from app.core.config import ConfigError, Settings
 
+    strong = "x" * 40
+    # Secreto vacío o corto: no arranca ni siquiera en dev (con "" se podían fabricar sesiones).
+    for secret in ("", "corto"):
+        with pytest.raises(ConfigError):
+            Settings(app_env="dev", auth_jwt_secret=secret).assert_safe_for_runtime()
     with pytest.raises(ConfigError):
-        Settings(app_env="prod").assert_safe_for_runtime()
-    Settings(app_env="dev").assert_safe_for_runtime()
+        Settings(
+            app_env="prod",
+            auth_jwt_secret=strong,
+            database_url="postgresql+psycopg2://tracker:dev-only-password@db:5432/tracker",
+        ).assert_safe_for_runtime()
+    Settings(app_env="dev", auth_jwt_secret=strong).assert_safe_for_runtime()
     Settings(
         app_env="prod",
-        auth_jwt_secret="x" * 40,
+        auth_jwt_secret=strong,
         database_url="postgresql+psycopg2://tracker:otra@db:5432/tracker",
     ).assert_safe_for_runtime()
+
+
+def test_tokens_signed_with_an_empty_secret_are_rejected(session, make_user) -> None:
+    import jwt
+
+    from app.services.auth_service import get_user_and_session_from_access_token
+
+    forged = jwt.encode({"sub": "1", "sid": "1", "typ": "access", "exp": 9999999999}, "", algorithm="HS256")
+    with pytest.raises(ValueError):
+        get_user_and_session_from_access_token(session, forged)
+
+
+def test_manual_checks_are_limited_to_protect_the_api(monkeypatch) -> None:
+    from app.api.routes import products as routes
+
+    calls = []
+    monkeypatch.setattr(routes, "check_products", lambda session, ids: calls.append(ids))
+    checker = routes.get_price_checker()
+    for _ in range(routes.MAX_CONCURRENT_MANUAL_CHECKS):
+        assert routes._manual_checks.acquire(blocking=False)
+    try:
+        with pytest.raises(routes.ChecksBusyError):
+            checker(None, [1])
+    finally:
+        for _ in range(routes.MAX_CONCURRENT_MANUAL_CHECKS):
+            routes._manual_checks.release()
+    checker(None, [1])
+    assert calls == [[1]]

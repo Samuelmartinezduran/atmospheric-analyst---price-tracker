@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Callable
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from app.schemas.product import (
 from app.scrapers.urls import STORES, UnsupportedUrlError
 from app.services.price_check_service import PriceCheckSummary, check_products, user_product_ids
 from app.services.product_service import (
+    ProductBusyError,
     ProductNotFoundError,
     delete_product,
     get_owned_product,
@@ -34,14 +36,43 @@ router = APIRouter()
 PriceChecker = Callable[[Session, list[int]], PriceCheckSummary]
 
 
+# Cada comprobación manual abre un Chromium dentro del proceso web y mantiene una conexión
+# a la base de datos mientras dura. Se limitan para que nadie pueda tumbar la API a base
+# de pulsar «Comprobar» (el worker no pasa por aquí).
+MAX_CONCURRENT_MANUAL_CHECKS = 2
+_manual_checks = threading.BoundedSemaphore(MAX_CONCURRENT_MANUAL_CHECKS)
+
+
+class ChecksBusyError(RuntimeError):
+    pass
+
+
 def get_price_checker() -> PriceChecker:
     """Se sustituye en los tests para no abrir un navegador de verdad."""
-    return lambda session, ids: check_products(session, ids)
+
+    def checker(session: Session, ids: list[int]) -> PriceCheckSummary:
+        if not _manual_checks.acquire(blocking=False):
+            raise ChecksBusyError()
+        try:
+            return check_products(session, ids)
+        finally:
+            _manual_checks.release()
+
+    return checker
 
 
 Checker = Annotated[PriceChecker, Depends(get_price_checker)]
 
 NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+BUSY = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail="Este producto se está comprobando ahora mismo. Prueba en unos segundos.",
+)
+TOO_MANY_CHECKS = HTTPException(
+    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+    detail="Ya hay otras comprobaciones en marcha. Prueba en un momento.",
+    headers={"Retry-After": "30"},
+)
 
 
 def _views(session: Session, products: list[Product]) -> list[ProductResponse]:
@@ -87,7 +118,11 @@ def create_product(
 
     if result.created:
         # Primera lectura en el momento, para que el usuario vea título, foto y precio al instante.
-        checker(db, [result.product.id])
+        # Si ya hay demasiadas comprobaciones en marcha, la hará el worker en su próxima ronda.
+        try:
+            checker(db, [result.product.id])
+        except ChecksBusyError:
+            pass
         db.refresh(result.product)
     else:
         response.status_code = status.HTTP_200_OK
@@ -100,6 +135,8 @@ def patch_product(product_id: int, payload: ProductUpdateRequest, user: CurrentU
         product = update_product(db, product_id, user, desired_price=payload.desired_price)
     except ProductNotFoundError as exc:
         raise NOT_FOUND from exc
+    except ProductBusyError as exc:
+        raise BUSY from exc
     return _views(db, [product])[0]
 
 
@@ -109,6 +146,8 @@ def remove_product(product_id: int, user: CurrentUser, db: DbSession) -> None:
         delete_product(db, product_id, user)
     except ProductNotFoundError as exc:
         raise NOT_FOUND from exc
+    except ProductBusyError as exc:
+        raise BUSY from exc
 
 
 @router.get("/products/{product_id}/history", response_model=list[PriceHistoryResponse])
@@ -127,12 +166,12 @@ def check_product_now(product_id: int, user: CurrentUser, db: DbSession, checker
     except ProductNotFoundError as exc:
         raise NOT_FOUND from exc
     db.rollback()  # suelta la transacción de lectura antes de tomar el bloqueo
-    summary = checker(db, [product_id])
+    try:
+        summary = checker(db, [product_id])
+    except ChecksBusyError as exc:
+        raise TOO_MANY_CHECKS from exc
     if summary.skipped:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Este producto ya se está comprobando. Espera unos segundos.",
-        )
+        raise BUSY
     return _summary(summary)
 
 
@@ -140,4 +179,7 @@ def check_product_now(product_id: int, user: CurrentUser, db: DbSession, checker
 def check_all_now(user: CurrentUser, db: DbSession, checker: Checker) -> PriceCheckSummaryResponse:
     ids = user_product_ids(db, user.id)
     db.rollback()
-    return _summary(checker(db, ids))
+    try:
+        return _summary(checker(db, ids))
+    except ChecksBusyError as exc:
+        raise TOO_MANY_CHECKS from exc
