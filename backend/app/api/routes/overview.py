@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import get_settings
-from app.db.models import PriceHistory, Product
-from app.schemas.overview import ReadingResponse, SummaryCounts, SummaryResponse
+from app.db.models import Alert, PriceHistory, Product
+from app.schemas.overview import AlertCounts, ReadingResponse, SummaryCounts, SummaryResponse
 
 router = APIRouter()
 
@@ -56,8 +56,17 @@ def summary(user: CurrentUser, db: DbSession) -> SummaryResponse:
     else:
         next_check = max(now, min(checked) + interval)
 
+    alerts = dict(
+        db.execute(select(Alert.status, func.count()).where(Alert.user_id == user.id).group_by(Alert.status)).all()
+    )
+    per_product_per_day = max(1, round(24 * 60 / settings.check_interval_minutes))
+
     return SummaryResponse(
         products=counts,
+        alerts=AlertCounts(
+            pending=alerts.get("pending", 0), sent=alerts.get("sent", 0), failed=alerts.get("failed", 0)
+        ),
+        expected_checks_24h=counts.total * per_product_per_day,
         checks_24h=sum(by_status.values()),
         failed_checks_24h=by_status.get("error", 0),
         last_check_at=max(checked) if checked else None,

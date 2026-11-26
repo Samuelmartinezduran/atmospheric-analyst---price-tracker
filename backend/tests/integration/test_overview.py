@@ -89,3 +89,28 @@ def test_csp_allows_only_the_hashed_inline_scripts(tmp_path, monkeypatch) -> Non
     csp = build_csp(hashes)
     assert "script-src 'self' 'sha256-abc+/=' 'sha256-ok';" in csp
     assert "unsafe-inline'" not in csp.split("style-src")[0]
+
+
+def test_products_carry_their_spark_and_can_be_fetched_one_by_one(client, fake_prices) -> None:
+    sign_up(client)
+    product_id = add(
+        client, fake_prices, "https://www.amazon.es/dp/B000000001", 100, ok("120"), out_of_stock(), ok("95")
+    )
+    client.post(f"/api/products/{product_id}/check", headers=csrf(client))
+    client.post(f"/api/products/{product_id}/check", headers=csrf(client))
+
+    listed = client.get("/api/products").json()[0]
+    # Solo las lecturas con precio, en orden cronológico; la de sin stock no entra.
+    assert [price for _, price in listed["spark"]] == [120.0, 95.0]
+    single = client.get(f"/api/products/{product_id}").json()
+    assert single["spark"] == listed["spark"]
+    assert single["stats"]["lowest_price"] == 95.0
+    assert client.get("/api/products/999").status_code == 404
+
+
+def test_summary_counts_alerts_and_expected_checks(client, fake_prices) -> None:
+    sign_up(client)
+    add(client, fake_prices, "https://www.amazon.es/dp/B000000001", 100, ok("90"))
+    data = client.get("/api/summary").json()
+    assert data["alerts"] == {"pending": 1, "sent": 0, "failed": 0}
+    assert data["expected_checks_24h"] == 4  # 1 producto × (24 h / 6 h)

@@ -13,8 +13,16 @@ class SummaryCounts(BaseModel):
     never_checked: int = 0
 
 
+class AlertCounts(BaseModel):
+    pending: int = 0
+    sent: int = 0
+    failed: int = 0
+
+
 class SummaryResponse(BaseModel):
     products: SummaryCounts
+    alerts: AlertCounts = AlertCounts()
+    expected_checks_24h: int = 0
     checks_24h: int
     failed_checks_24h: int
     last_check_at: datetime | None

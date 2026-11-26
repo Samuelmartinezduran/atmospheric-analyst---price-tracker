@@ -64,16 +64,18 @@ Los emails llevan enlaces a `/verificar?token=…` y `/restablecer?token=…`.
     "avg_price_30d": 655.2,
     "checks_count": 41
   },
+  "spark": [["2026-03-24T10:00:00Z", 659.0], ["2026-04-01T17:10:04Z", 649.0]],
   "created_at": "...",
   "updated_at": "..."
 }
 ```
 
-`stats` siempre es un objeto; sus campos pueden ser `null` si aún no hay precios. `lowest_price` y `highest_price` son de todo el historial; `avg_price_30d`, de los últimos 30 días; `checks_count` cuenta solo las comprobaciones con precio (las fallidas y sin stock no).
+`spark` son las últimas 30 lecturas con precio, en orden cronológico, para la minigráfica sin pedir el historial. `stats` siempre es un objeto; sus campos pueden ser `null` si aún no hay precios. `lowest_price` y `highest_price` son de todo el historial; `avg_price_30d`, de los últimos 30 días; `checks_count` cuenta solo las comprobaciones con precio (las fallidas y sin stock no).
 
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
 | GET | `/api/products` | — | 200 `Product[]` (más recientes primero) |
+| GET | `/api/products/{id}` | — | 200 `Product` · 404 |
 | POST | `/api/products` | `{url, desired_price}` | 201 `Product` (nuevo; ya trae la primera comprobación) · 200 si ya existía (se actualiza el objetivo) · 400 URL no soportada |
 | PATCH | `/api/products/{id}` | `{desired_price?}` | 200 `Product` · 404 |
 | DELETE | `/api/products/{id}` | — | 204 (borra también su historial y sus alertas) · 404 |
@@ -106,6 +108,8 @@ El rol no se concede desde la API: `docker compose exec web python -m app.cli cr
 ```json
 {
   "products": {"total": 6, "below_target": 1, "above_target": 3, "unavailable": 2, "error": 0, "never_checked": 0},
+  "alerts": {"pending": 0, "sent": 2, "failed": 3},
+  "expected_checks_24h": 24,
   "checks_24h": 6,
   "failed_checks_24h": 0,
   "last_check_at": "2026-11-26T19:21:18Z",

@@ -132,6 +132,37 @@ def delete_product(session: Session, product_id: int, owner: User) -> None:
     session.commit()
 
 
+SPARK_POINTS = 30
+
+
+def spark_points(session: Session, product_ids: list[int], limit: int = SPARK_POINTS) -> dict[int, list[tuple]]:
+    """Las últimas `limit` lecturas con precio de cada producto, en orden cronológico (una sola consulta)."""
+    if not product_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=PriceHistory.product_id,
+            order_by=[PriceHistory.checked_at.desc(), PriceHistory.id.desc()],
+        )
+        .label("rn")
+    )
+    ranked = (
+        select(PriceHistory.product_id, PriceHistory.checked_at, PriceHistory.price, rn)
+        .where(PriceHistory.product_id.in_(product_ids), PriceHistory.price.isnot(None))
+        .subquery()
+    )
+    rows = session.execute(
+        select(ranked.c.product_id, ranked.c.checked_at, ranked.c.price)
+        .where(ranked.c.rn <= limit)
+        .order_by(ranked.c.product_id, ranked.c.checked_at.asc())
+    ).all()
+    points: dict[int, list[tuple]] = {product_id: [] for product_id in product_ids}
+    for product_id, checked_at, price in rows:
+        points[product_id].append((checked_at, price))
+    return points
+
+
 def previous_prices(session: Session, product_ids: list[int]) -> dict[int, Decimal]:
     """El precio de la comprobación correcta anterior a la última, por producto."""
     if not product_ids:

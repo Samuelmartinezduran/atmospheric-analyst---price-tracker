@@ -48,6 +48,8 @@ class ProductResponse(BaseModel):
     last_checked_at: datetime | None
     is_below_target: bool = False
     stats: PriceStatsResponse = PriceStatsResponse()
+    # Últimas 30 lecturas con precio, en orden cronológico: [[fecha ISO, precio], ...]
+    spark: list[tuple[datetime, float]] = []
     created_at: datetime
     updated_at: datetime
 

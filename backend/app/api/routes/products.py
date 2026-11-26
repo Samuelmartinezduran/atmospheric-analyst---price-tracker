@@ -27,6 +27,7 @@ from app.services.product_service import (
     list_products,
     previous_prices,
     price_stats,
+    spark_points,
     update_product,
     upsert_product,
 )
@@ -79,6 +80,7 @@ def _views(session: Session, products: list[Product]) -> list[ProductResponse]:
     ids = [product.id for product in products]
     previous = previous_prices(session, ids)
     stats = price_stats(session, ids)
+    sparks = spark_points(session, ids)
     views = []
     for product in products:
         view = ProductResponse.model_validate(product)
@@ -89,6 +91,7 @@ def _views(session: Session, products: list[Product]) -> list[ProductResponse]:
             and product.last_price <= product.desired_price
         )
         view.stats = PriceStatsResponse(**vars(stats[product.id]))
+        view.spark = [(checked_at, float(price)) for checked_at, price in sparks[product.id]]
         views.append(view)
     return views
 
@@ -127,6 +130,15 @@ def create_product(
     else:
         response.status_code = status.HTTP_200_OK
     return _views(db, [result.product])[0]
+
+
+@router.get("/products/{product_id}", response_model=ProductResponse)
+def get_product(product_id: int, user: CurrentUser, db: DbSession) -> ProductResponse:
+    try:
+        product = get_owned_product(db, product_id, user)
+    except ProductNotFoundError as exc:
+        raise NOT_FOUND from exc
+    return _views(db, [product])[0]
 
 
 @router.patch("/products/{product_id}", response_model=ProductResponse)
