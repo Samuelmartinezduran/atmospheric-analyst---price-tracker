@@ -1,0 +1,13 @@
+---
+import ReadingsPage from '../islands/ReadingsPage';
+import {PageSkeleton} from '../components/skeletons';
+import AppLayout from '../layouts/AppLayout.astro';
+---
+
+<AppLayout title="Lecturas" section="lecturas">
+  <ReadingsPage client:only="react">
+    <div slot="fallback" style="display: contents">
+      <PageSkeleton crumb="Todas las lecturas" title="Lecturas" variant="table" />
+    </div>
+  </ReadingsPage>
+</AppLayout>

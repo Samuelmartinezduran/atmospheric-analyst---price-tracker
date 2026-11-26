@@ -1,0 +1,13 @@
+---
+import AdminPage from '../islands/AdminPage';
+import {PageSkeleton} from '../components/skeletons';
+import AppLayout from '../layouts/AppLayout.astro';
+---
+
+<AppLayout title="Administración" section="admin">
+  <AdminPage client:only="react">
+    <div slot="fallback" style="display: contents">
+      <PageSkeleton crumb="Todas las cuentas" title="Administración" variant="table" />
+    </div>
+  </AdminPage>
+</AppLayout>

@@ -1,7 +1,7 @@
 # Una sola imagen para la API (servicio `web`) y el worker (ver docs/DECISIONES.md, D3 y D4).
 
 # --- 1. Frontend compilado ---------------------------------------------------
-FROM node:22-alpine AS web-build
+FROM node:22.23.5-alpine AS web-build
 WORKDIR /web
 COPY front/package.json front/package-lock.json ./
 RUN npm ci --no-audit --no-fund

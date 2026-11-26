@@ -21,7 +21,7 @@ Empezó como mi primer proyecto (marzo de 2026) y en noviembre lo rehíce entero
 
 - **Backend:** Python 3.10, FastAPI, SQLAlchemy 2, Alembic, Playwright.
 - **Parser de precios:** Rust (PyO3 + maturin), con tests de propiedades (`proptest`).
-- **Frontend:** React 19, Vite, Tailwind v4, react-router, Recharts.
+- **Frontend:** Astro 7 con islas de React 19, CSS propio y gráficas en SVG; 89 KB de JavaScript comprimido en la portada.
 - **Infraestructura:** Docker Compose (db, web y worker con la misma imagen) y GitHub Actions.
 
 Algunas decisiones que quizá sorprendan, explicadas en [`docs/DECISIONES.md`](docs/DECISIONES.md):

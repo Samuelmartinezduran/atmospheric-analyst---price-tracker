@@ -23,7 +23,11 @@ backend/app/
 backend/alembic/        migraciones (se aplican solas al arrancar, con bloqueo)
 backend/tests/          unit/ e integration/ (SQLite en memoria, sin navegador)
 precio/                 crate de Rust: parser de precios + enlace PyO3
-front/                  React 19 + Vite + Tailwind v4 + react-router
+front/                  Astro 7 (salida estática) + islas de React 19; diseño «Consola» (lenguaje del panel de Vercel)
+  src/pages/            una página por ruta: /, /producto?id=, /lecturas, /alertas, /ajustes, /admin, cuenta y 404
+  src/islands/          una isla client:only por página; src/components/ con la gráfica SVG propia
+  src/lib/cache.ts…     caché en memoria (stale-while-revalidate), sesión, escalas de la gráfica
+  scripts/csp-hashes.mjs  genera dist/csp-hashes.json: el servidor solo permite esos scripts en línea
 ```
 
 ## Comandos
@@ -43,8 +47,8 @@ docker run --rm atmospheric-analyst:test ruff check app tests alembic
 docker run --rm atmospheric-analyst:test ruff format --check app tests alembic
 
 # Frontend en caliente (con la API en Docker)
-cd front && npm install && npm run dev    # http://localhost:5173, proxy de /api a :8001
-npm run lint && npm test && npm run build
+cd front && npm install && npm run dev    # http://127.0.0.1:5173, proxy de /api a 127.0.0.1:8001
+npm run check && npm test && npm run build   # astro check, Vitest, build + hashes CSP
 ```
 
 Nueva migración: `docker compose run --rm web alembic revision -m "descripcion"` y escribirla a mano (revisa siempre lo que genera `--autogenerate`).
@@ -56,6 +60,7 @@ Nueva migración: `docker compose run --rm web alembic revision -m "descripcion"
 - **Alertas:** un error de lectura no toca `was_below_desired`; quedarse sin stock sí. Ver `services/price_check_service.py`.
 - **Configuración:** una variable nueva va en `core/config.py` y en `.env.example`. No repetir valores por defecto en `docker-compose.yml`.
 - **Secretos:** nada de valores por defecto que funcionen fuera de `APP_ENV=dev`.
+- **Frontend:** nada de Tailwind, Recharts ni librerías de iconos; CSS propio con tokens en `src/styles/global.css` y SVG propios. Presupuesto: JS de `/` por debajo de 90 KB con gzip (hoy 89,1 KB; casi todo es react-dom). Un script en línea nuevo exige rehacer `npm run build` para que su hash entre en la CSP.
 - **Idioma:** identificadores en inglés; comentarios, docstrings, mensajes de error y toda la interfaz en español con tildes.
 
 ## Añadir una tienda

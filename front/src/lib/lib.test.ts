@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import type {Product} from '../api/types';
-import {toChartPoints} from './chartPoints';
-import {formatPrice, parsePriceInput} from './format';
+import {toPricePoints} from './chart';
+import {formatPrice} from './format';
+import {parsePriceInput} from './priceInput';
 import {getLegacyRedirect} from './legacyRedirect';
 import {getPriceVerdict} from './priceVerdict';
 import {detectStore} from './productStatus';
@@ -76,9 +77,9 @@ describe('getPriceVerdict', () => {
   });
 });
 
-describe('toChartPoints', () => {
+describe('toPricePoints', () => {
   it('descarta las comprobaciones sin precio', () => {
-    const points = toChartPoints([
+    const points = toPricePoints([
       {id: 1, product_id: 1, price: 10, currency: 'EUR', status: 'ok', error_message: null, checked_at: '2026-11-01T10:00:00Z'},
       {id: 2, product_id: 1, price: null, currency: 'EUR', status: 'error', error_message: 'x', checked_at: '2026-11-02T10:00:00Z'},
       {id: 3, product_id: 1, price: 9, currency: 'EUR', status: 'ok', error_message: null, checked_at: '2026-11-03T10:00:00Z'},

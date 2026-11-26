@@ -25,3 +25,10 @@ export function markAlertsSeen(now = Date.now()): void {
 export function countNewAlerts(alerts: Alert[], seenAt = getAlertsSeenAt()): number {
   return alerts.filter((alert) => new Date(alert.triggered_at).getTime() > seenAt).length;
 }
+
+/** Evento que avisa a la barra lateral de que se han visto las alertas (misma pestaña). */
+export const ALERTS_SEEN_EVENT = 'alerts-seen';
+
+export function notifyAlertsSeen(): void {
+  window.dispatchEvent(new Event(ALERTS_SEEN_EVENT));
+}

@@ -1,0 +1,13 @@
+---
+import AlertsPage from '../islands/AlertsPage';
+import {PageSkeleton} from '../components/skeletons';
+import AppLayout from '../layouts/AppLayout.astro';
+---
+
+<AppLayout title="Alertas" section="alertas">
+  <AlertsPage client:only="react">
+    <div slot="fallback" style="display: contents">
+      <PageSkeleton crumb="Avisos por correo" title="Alertas" variant="table" />
+    </div>
+  </AlertsPage>
+</AppLayout>

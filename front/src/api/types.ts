@@ -107,3 +107,41 @@ export interface Alert {
   triggered_at: string;
   sent_at: string | null;
 }
+
+export interface SummaryCounts {
+  total: number;
+  below_target: number;
+  above_target: number;
+  unavailable: number;
+  error: number;
+  never_checked: number;
+}
+
+/** `GET /api/summary`: columna izquierda del panel. */
+export interface Summary {
+  products: SummaryCounts;
+  checks_24h: number;
+  failed_checks_24h: number;
+  last_check_at: string | null;
+  /** Cuándo le toca al producto que más tiempo lleva sin comprobarse; `null` sin productos. */
+  next_check_at: string | null;
+  check_interval_minutes: number;
+  email_enabled: boolean;
+}
+
+export type ReadingStatus = 'ok' | 'unavailable' | 'error';
+
+/** `GET /api/readings`: una comprobación con el precio correcto anterior de ese producto. */
+export interface Reading {
+  id: number;
+  product_id: number;
+  product_title: string | null;
+  store: string;
+  /** `null` si la lectura falló o no había stock. */
+  price: number | null;
+  previous_price: number | null;
+  desired_price: number;
+  status: ReadingStatus | string;
+  error_message: string | null;
+  checked_at: string;
+}
