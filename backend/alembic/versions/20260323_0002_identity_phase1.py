@@ -5,13 +5,13 @@ Revises: 20260323_0001
 Create Date: 2026-03-23 00:30:00
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Sequence, Union
-import os
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260323_0002"

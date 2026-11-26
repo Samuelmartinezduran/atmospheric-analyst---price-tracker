@@ -1,14 +1,14 @@
 from app.scrapers.amazon import AmazonEsScraper
-from app.scrapers.base import BaseStoreScraper
+from app.scrapers.base import BaseStoreScraper, BrowserSession, ScraperError, ScrapeResult
 from app.scrapers.pccomponentes import PcComponentesScraper
 
+_SCRAPERS: dict[str, BaseStoreScraper] = {
+    scraper.store_code: scraper for scraper in (AmazonEsScraper(), PcComponentesScraper())
+}
 
-def build_scrapers() -> list[BaseStoreScraper]:
-    return [AmazonEsScraper(), PcComponentesScraper()]
+
+def scraper_for_store(store_code: str) -> BaseStoreScraper | None:
+    return _SCRAPERS.get(store_code)
 
 
-def resolve_scraper(url: str) -> BaseStoreScraper | None:
-    for scraper in build_scrapers():
-        if scraper.can_handle(url):
-            return scraper
-    return None
+__all__ = ["BrowserSession", "ScrapeResult", "ScraperError", "scraper_for_store"]

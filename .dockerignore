@@ -1,0 +1,15 @@
+**/.git
+**/node_modules
+**/.npm-cache
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.env
+**/.env.*
+!**/.env.example
+front/dist
+docs
+.claude
+.vscode
+*.md

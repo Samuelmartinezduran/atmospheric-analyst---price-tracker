@@ -1,16 +1,34 @@
-from dataclasses import dataclass
-from datetime import datetime, timezone
+"""Comprobación de precios.
 
-from sqlalchemy import select
+Reglas (ver D9 en docs/DECISIONES.md):
+- Se crea una alerta cuando el precio cruza el objetivo hacia abajo.
+- Un error de lectura NO cambia el estado «por debajo del objetivo»: antes lo
+  ponía a false y cada bloqueo de Amazon acababa en un email repetido.
+- «Sin stock» sí lo reinicia: volver a tener stock por debajo del objetivo es noticia.
+
+Cada producto se procesa en su propia transacción y con un bloqueo consultivo
+de Postgres, para que el worker y una comprobación manual no lo procesen a la
+vez (eso duplicaba alertas).
+"""
+
+import logging
+from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import Alert, PriceHistory, Product
-from app.scrapers import resolve_scraper
+from app.scrapers import BrowserSession, ScrapeResult, scraper_for_store
 from app.services.alert_rules import next_below_state, should_create_alert
-from app.services.auth_email_service import _send_smtp_email
 
-settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# Primer entero del bloqueo consultivo de dos claves: «espacio» de este proyecto.
+ADVISORY_LOCK_NAMESPACE = 41_001
 
 
 @dataclass
@@ -19,93 +37,38 @@ class PriceCheckSummary:
     checked_ok: int = 0
     checked_failed: int = 0
     alerts_created: int = 0
+    skipped: int = 0
+
+    def merge(self, other: "PriceCheckSummary") -> None:
+        self.total_products += other.total_products
+        self.checked_ok += other.checked_ok
+        self.checked_failed += other.checked_failed
+        self.alerts_created += other.alerts_created
+        self.skipped += other.skipped
 
 
-def _check_product(session: Session, product: Product, summary: PriceCheckSummary) -> None:
-    summary.total_products += 1
-    checked_at = datetime.now(timezone.utc)
+Fetcher = Callable[[Product], ScrapeResult]
 
-    try:
-        scraper = resolve_scraper(product.url)
-        if not scraper:
-            raise ValueError("Tienda no soportada para scraping.")
 
-        result = scraper.fetch_price(product.url)
-        product.title = result.title or product.title
-        product.image_url = result.image_url or product.image_url
-        product.currency = result.currency
-        product.last_checked_at = checked_at
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
-        if not result.in_stock or result.price is None:
-            product.last_status = "unavailable"
-            product.last_error = "Producto sin stock o precio no visible."
-            product.was_below_desired = False
-            session.add(
-                PriceHistory(
-                    user_id=product.user_id,
-                    product_id=product.id,
-                    title_snapshot=product.title,
-                    price=None,
-                    currency=product.currency,
-                    status="unavailable",
-                    error_message=product.last_error,
-                    checked_at=checked_at,
-                )
-            )
-            summary.checked_failed += 1
-            return
 
-        product.last_price = result.price
-        product.last_status = "ok"
-        product.last_error = None
-        session.add(
-            PriceHistory(
-                user_id=product.user_id,
-                product_id=product.id,
-                title_snapshot=product.title,
-                price=result.price,
-                currency=result.currency,
-                status="ok",
-                error_message=None,
-                checked_at=checked_at,
-            )
-        )
+def apply_check_result(
+    session: Session,
+    product: Product,
+    result: ScrapeResult | None,
+    error: Exception | None,
+    checked_at: datetime,
+) -> Alert | None:
+    """Aplica el resultado de una lectura a un producto. Función pura salvo por ``session.add``."""
+    product.last_checked_at = checked_at
 
-        if should_create_alert(
-            was_below_desired=product.was_below_desired,
-            current_price=result.price,
-            desired_price=product.desired_price,
-            in_stock=result.in_stock,
-        ):
-            recipient_email = (
-                product.user.email
-                if product.user and product.user.email and product.user.email.strip()
-                else settings.alert_email
-            )
-            session.add(
-                Alert(
-                    user_id=product.user_id,
-                    product_id=product.id,
-                    email_to=recipient_email,
-                    desired_price=product.desired_price,
-                    triggered_price=result.price,
-                    currency=result.currency,
-                    status="pending",
-                )
-            )
-            summary.alerts_created += 1
-
-        product.was_below_desired = next_below_state(
-            current_price=result.price,
-            desired_price=product.desired_price,
-            in_stock=result.in_stock,
-        )
-        summary.checked_ok += 1
-    except Exception as exc:
-        product.last_checked_at = checked_at
+    if error is not None or result is None:
+        message = str(error) if error else "Error desconocido al leer la página."
         product.last_status = "error"
-        product.last_error = str(exc)
-        product.was_below_desired = False
+        product.last_error = message[:2000]
+        # was_below_desired se queda como estaba (ver docstring del módulo).
         session.add(
             PriceHistory(
                 user_id=product.user_id,
@@ -114,102 +77,175 @@ def _check_product(session: Session, product: Product, summary: PriceCheckSummar
                 price=None,
                 currency=product.currency,
                 status="error",
-                error_message=str(exc),
+                error_message=product.last_error,
                 checked_at=checked_at,
             )
         )
-        summary.checked_failed += 1
+        return None
+
+    product.title = result.title or product.title
+    product.image_url = result.image_url or product.image_url
+    product.currency = result.currency
+
+    if not result.in_stock or result.price is None:
+        product.last_status = "unavailable"
+        product.last_error = "Sin stock o sin precio visible."
+        product.was_below_desired = False
+        session.add(
+            PriceHistory(
+                user_id=product.user_id,
+                product_id=product.id,
+                title_snapshot=product.title,
+                price=None,
+                currency=product.currency,
+                status="unavailable",
+                error_message=product.last_error,
+                checked_at=checked_at,
+            )
+        )
+        return None
+
+    product.last_price = result.price
+    product.last_status = "ok"
+    product.last_error = None
+    session.add(
+        PriceHistory(
+            user_id=product.user_id,
+            product_id=product.id,
+            title_snapshot=product.title,
+            price=result.price,
+            currency=result.currency,
+            status="ok",
+            error_message=None,
+            checked_at=checked_at,
+        )
+    )
+
+    alert = None
+    if should_create_alert(
+        was_below_desired=product.was_below_desired,
+        current_price=result.price,
+        desired_price=product.desired_price,
+        in_stock=True,
+    ):
+        alert = Alert(
+            user_id=product.user_id,
+            product_id=product.id,
+            email_to=product.user.email,
+            desired_price=product.desired_price,
+            triggered_price=result.price,
+            currency=result.currency,
+            status="pending",
+            attempts=0,
+        )
+        session.add(alert)
+
+    product.was_below_desired = next_below_state(
+        current_price=result.price, desired_price=product.desired_price, in_stock=True
+    )
+    return alert
 
 
-def _commit_or_raise(session: Session) -> None:
+def _try_lock(session: Session, product_id: int) -> bool:
+    if session.get_bind().dialect.name != "postgresql":
+        return True
+    return bool(
+        session.execute(
+            text("SELECT pg_try_advisory_xact_lock(:ns, :id)"),
+            {"ns": ADVISORY_LOCK_NAMESPACE, "id": product_id},
+        ).scalar()
+    )
+
+
+def check_product(session: Session, product_id: int, fetch: Fetcher) -> PriceCheckSummary:
+    """Comprueba un producto en su propia transacción. Nunca lanza por errores de lectura."""
+    summary = PriceCheckSummary(total_products=1)
     try:
+        if not _try_lock(session, product_id):
+            summary.skipped = 1
+            session.rollback()
+            return summary
+
+        product = session.get(Product, product_id)
+        if not product or not product.is_active:
+            summary.total_products = 0
+            session.rollback()
+            return summary
+
+        result, error = None, None
+        try:
+            scraper = scraper_for_store(product.store)
+            if scraper is None:
+                raise ValueError(f"Tienda no soportada: {product.store}")
+            result = fetch(product)
+        except Exception as exc:  # noqa: BLE001 - cualquier fallo de lectura se registra en el producto
+            logger.warning("Fallo al comprobar el producto %s: %s", product_id, exc)
+            error = exc
+
+        alert = apply_check_result(session, product, result, error, _now())
         session.commit()
-    except Exception as exc:
+    except Exception:
         session.rollback()
-        raise RuntimeError(f"No se pudieron persistir los resultados de scraping: {exc}") from exc
+        raise
 
-
-def run_price_check(session: Session) -> PriceCheckSummary:
-    summary = PriceCheckSummary()
-    products = list(session.scalars(select(Product).where(Product.is_active.is_(True))).all())
-    for product in products:
-        _check_product(session, product, summary)
-    _commit_or_raise(session)
+    if error is None and product.last_status == "ok":
+        summary.checked_ok = 1
+    else:
+        summary.checked_failed = 1
+    if alert is not None:
+        summary.alerts_created = 1
     return summary
 
 
-def run_price_check_for_user(session: Session, user_id: int) -> PriceCheckSummary:
-    summary = PriceCheckSummary()
-    products = list(
-        session.scalars(select(Product).where(Product.is_active.is_(True), Product.user_id == user_id)).all()
-    )
-    for product in products:
-        _check_product(session, product, summary)
-    _commit_or_raise(session)
-    return summary
+def check_products(
+    session: Session,
+    product_ids: Iterable[int],
+    browser_factory: Callable[[], AbstractContextManager[BrowserSession]] | None = None,
+    fetch: Fetcher | None = None,
+) -> PriceCheckSummary:
+    """Comprueba varios productos con un único navegador.
 
-
-def run_price_check_for_product(session: Session, product_id: int) -> PriceCheckSummary:
+    ``fetch`` permite inyectar un lector falso en los tests; si no se pasa, se
+    abre un ``BrowserSession`` real.
+    """
+    ids = list(product_ids)
     summary = PriceCheckSummary()
-    product = session.get(Product, product_id)
-    if not product or not product.is_active:
+    if not ids:
         return summary
-    _check_product(session, product, summary)
-    _commit_or_raise(session)
+
+    if fetch is not None:
+        context: AbstractContextManager = nullcontext(None)
+    else:
+        context = (browser_factory or BrowserSession)()
+
+    with context as browser:
+        if fetch is None:
+
+            def fetch(product: Product) -> ScrapeResult:  # noqa: F811
+                scraper = scraper_for_store(product.store)
+                return scraper.fetch(product.url, browser)
+
+        for product_id in ids:
+            summary.merge(check_product(session, product_id, fetch))
     return summary
 
 
-def list_pending_alerts(session: Session) -> list[dict]:
+def due_product_ids(session: Session, now: datetime | None = None, limit: int = 50) -> list[int]:
+    settings = get_settings()
+    now = now or _now()
+    threshold = now - timedelta(minutes=settings.check_interval_minutes)
     query = (
-        select(Alert, Product)
-        .join(Product, Product.id == Alert.product_id)
-        .where(Alert.status == "pending")
-        .order_by(Alert.triggered_at.asc(), Alert.id.asc())
+        select(Product.id)
+        .where(
+            Product.is_active.is_(True),
+            or_(Product.last_checked_at.is_(None), Product.last_checked_at < threshold),
+        )
+        .order_by(Product.last_checked_at.asc().nulls_first(), Product.id.asc())
+        .limit(limit)
     )
-    rows = session.execute(query).all()
-    return [
-        {
-            "id": alert.id,
-            "product_id": product.id,
-            "product_title": product.title,
-            "product_url": product.url,
-            "email_to": alert.email_to,
-            "desired_price": alert.desired_price,
-            "triggered_price": alert.triggered_price,
-            "currency": alert.currency,
-            "triggered_at": alert.triggered_at,
-        }
-        for alert, product in rows
-    ]
+    return list(session.scalars(query).all())
 
 
-def mark_alert_as_sent(session: Session, alert_id: int) -> None:
-    alert = session.get(Alert, alert_id)
-    if not alert:
-        raise ValueError(f"No existe una alerta con id={alert_id}.")
-
-    alert.status = "sent"
-    alert.error_message = None
-    alert.sent_at = datetime.now(timezone.utc)
-    session.commit()
-
-
-def send_alert_email(session: Session, alert_id: int) -> None:
-    query = (
-        select(Alert, Product)
-        .join(Product, Product.id == Alert.product_id)
-        .where(Alert.id == alert_id)
-    )
-    row = session.execute(query).first()
-    if not row:
-        raise ValueError(f"No existe una alerta con id={alert_id}.")
-
-    alert, product = row
-    title = product.title or product.url
-    subject = f"Precio objetivo alcanzado: {title}"
-    body = (
-        f"Tu producto '{title}' ha bajado a {alert.triggered_price} {alert.currency} "
-        f"(objetivo: {alert.desired_price} {alert.currency}).\n\n"
-        f"URL: {product.url}"
-    )
-    _send_smtp_email(to_email=alert.email_to, subject=subject, body=body)
+def user_product_ids(session: Session, user_id: int) -> list[int]:
+    query = select(Product.id).where(Product.user_id == user_id, Product.is_active.is_(True)).order_by(Product.id)
+    return list(session.scalars(query).all())

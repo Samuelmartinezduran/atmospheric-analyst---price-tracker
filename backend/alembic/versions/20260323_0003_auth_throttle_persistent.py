@@ -7,9 +7,9 @@ Create Date: 2026-03-23 17:00:00
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260323_0003"
@@ -58,4 +58,3 @@ def downgrade() -> None:
     op.drop_index("ix_auth_login_attempts_last_attempt_at", table_name="auth_login_attempts")
     op.drop_index("ix_auth_login_attempts_throttle_key", table_name="auth_login_attempts")
     op.drop_table("auth_login_attempts")
-

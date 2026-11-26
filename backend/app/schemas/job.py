@@ -6,3 +6,4 @@ class PriceCheckSummaryResponse(BaseModel):
     checked_ok: int
     checked_failed: int
     alerts_created: int
+    skipped: int = 0

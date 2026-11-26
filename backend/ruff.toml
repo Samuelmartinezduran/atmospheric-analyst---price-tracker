@@ -1,0 +1,13 @@
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "B008",  # Depends() en argumentos por defecto es lo normal en FastAPI
+    "UP038",  # regla obsoleta en ruff
+]
+
+[lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]
+"alembic/versions/*" = ["UP007", "UP035"]

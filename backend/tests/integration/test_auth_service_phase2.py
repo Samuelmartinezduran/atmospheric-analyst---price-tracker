@@ -39,7 +39,7 @@ def test_login_requires_verified_email() -> None:
 
         try:
             login_user(session, email="pending@example.com", password="StrongPass1234!")
-            assert False, "login_user deberia fallar si el email no esta verificado"
+            raise AssertionError("login_user deberia fallar si el email no esta verificado")
         except ValueError as exc:
             assert "verificar" in str(exc).lower()
 
@@ -54,9 +54,9 @@ def test_access_token_invalid_signature_returns_value_error() -> None:
         tampered_token = f"{tokens.access_token}tampered"
         try:
             get_user_and_session_from_access_token(session, tampered_token)
-            assert False, "el token manipulado deberia fallar"
+            raise AssertionError("el token manipulado deberia fallar")
         except ValueError as exc:
-            assert "token de acceso invalido" in str(exc).lower()
+            assert "token de acceso no válido" in str(exc).lower()
 
 
 def test_refresh_rotates_active_session() -> None:
@@ -93,7 +93,7 @@ def test_reset_password_revokes_sessions_and_allows_new_login() -> None:
 
         try:
             login_user(session, email=email, password=original_password)
-            assert False, "la contrasena anterior ya no deberia ser valida"
+            raise AssertionError("la contrasena anterior ya no deberia ser valida")
         except ValueError:
             pass
 

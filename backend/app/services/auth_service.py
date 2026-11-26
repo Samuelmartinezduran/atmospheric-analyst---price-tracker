@@ -24,6 +24,16 @@ from app.db.models import (
     UserSession,
 )
 
+_DUMMY_PASSWORD_HASH = hash_password("contraseña-que-nadie-tiene-0000")
+
+
+class AccountExistsError(ValueError):
+    pass
+
+
+class EmailNotVerifiedError(ValueError):
+    """Contraseña correcta, pero la cuenta aún no está verificada."""
+
 
 @dataclass
 class SessionTokens:
@@ -143,7 +153,7 @@ def register_user(
     normalized_email = normalize_email(email)
     existing_user = session.scalar(select(User).where(User.email == normalized_email))
     if existing_user:
-        raise ValueError("Ya existe una cuenta para ese email.")
+        raise AccountExistsError("Ya existe una cuenta para ese email.")
 
     user = User(
         email=normalized_email,
@@ -188,7 +198,7 @@ def verify_email(
         )
     )
     if not token_row:
-        raise ValueError("Token de verificacion invalido o expirado.")
+        raise ValueError("El enlace de verificación no es válido o ha caducado.")
 
     user = session.get(User, token_row.user_id)
     if not user or not user.is_active:
@@ -221,10 +231,16 @@ def login_user(
 ) -> tuple[User, SessionTokens]:
     normalized_email = normalize_email(email)
     user = session.scalar(select(User).where(User.email == normalized_email))
-    if not user or not user.is_active or not verify_password(password, user.password_hash):
-        raise ValueError("Credenciales invalidas.")
+    if not user:
+        # Se calcula un hash igualmente para que el tiempo de respuesta no delate si el email existe.
+        verify_password(password, _DUMMY_PASSWORD_HASH)
+        raise ValueError("Email o contraseña incorrectos.")
+    if not user.is_active or not verify_password(password, user.password_hash):
+        raise ValueError("Email o contraseña incorrectos.")
     if not user.is_email_verified:
-        raise ValueError("Debes verificar tu email antes de iniciar sesion.")
+        raise EmailNotVerifiedError(
+            "Tienes que verificar tu email antes de entrar. Revisa tu correo o pide otro enlace."
+        )
 
     try:
         issued = _issue_session_tokens(
@@ -264,11 +280,11 @@ def refresh_session(
         )
     )
     if not current_session:
-        raise ValueError("Sesion invalida o expirada.")
+        raise ValueError("La sesión no es válida o ha caducado.")
 
     user = session.get(User, current_session.user_id)
     if not user or not user.is_active:
-        raise ValueError("Sesion invalida o expirada.")
+        raise ValueError("La sesión no es válida o ha caducado.")
 
     try:
         current_session.revoked_at = now_utc
@@ -392,12 +408,12 @@ def get_user_and_session_from_access_token(
     try:
         payload = decode_access_token(access_token)
     except Exception as exc:
-        raise ValueError("Token de acceso invalido.") from exc
+        raise ValueError("Token de acceso no válido.") from exc
     try:
         user_id = int(payload.get("sub"))
         session_id = int(payload.get("sid"))
     except (TypeError, ValueError) as exc:
-        raise ValueError("Token de acceso invalido.") from exc
+        raise ValueError("Token de acceso no válido.") from exc
 
     user_session = session.scalar(
         select(UserSession).where(
@@ -408,7 +424,7 @@ def get_user_and_session_from_access_token(
         )
     )
     if not user_session:
-        raise ValueError("Sesion de acceso invalida o expirada.")
+        raise ValueError("La sesión no es válida o ha caducado.")
 
     user = session.get(User, user_id)
     if not user or not user.is_active:
@@ -490,11 +506,11 @@ def reset_password_with_token(
         )
     )
     if not token_row:
-        raise ValueError("Token de recuperacion invalido o expirado.")
+        raise ValueError("El enlace para cambiar la contraseña no es válido o ha caducado.")
 
     user = session.get(User, token_row.user_id)
     if not user or not user.is_active:
-        raise ValueError("No se puede actualizar la contrasena para esta cuenta.")
+        raise ValueError("No se puede cambiar la contraseña de esta cuenta.")
 
     try:
         token_row.used_at = now_utc
@@ -532,7 +548,7 @@ def change_password(
     user_agent: str | None = None,
 ) -> None:
     if not verify_password(current_password, user.password_hash):
-        raise ValueError("La contrasena actual no es correcta.")
+        raise ValueError("La contraseña actual no es correcta.")
 
     now_utc = _utcnow()
     try:

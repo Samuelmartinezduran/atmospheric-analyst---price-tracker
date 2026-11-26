@@ -1,6 +1,29 @@
+# Secretos
 .env
+.env.*
+!.env.example
+front/.env
+
+# Dependencias y cachés
+node_modules/
+.npm-cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Compilados
+front/dist/
+
+# Editor y herramientas locales
+.claude/
+.vscode/
+*.session.sql
+
+# Notas de trabajo antiguas
 agents.md
 plan.md
 skills.md
-.claude
-CLAUDE.md
+
+# Copias de la base de datos
+backups/

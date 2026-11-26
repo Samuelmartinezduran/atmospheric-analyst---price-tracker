@@ -1,0 +1,27 @@
+[package]
+name = "precio"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Interpretación estricta de precios en euros (formato de datos y texto en español), con enlace a Python."
+license = "MIT"
+publish = false
+
+[lib]
+name = "precio"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Solo al compilar el módulo de Python (maturin). `cargo test` no lo activa,
+# así los tests no necesitan enlazar con libpython.
+python = ["dep:pyo3"]
+
+[dependencies]
+pyo3 = { version = "0.23.3", features = ["extension-module", "abi3-py310"], optional = true }
+
+[dev-dependencies]
+proptest = "1.5.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

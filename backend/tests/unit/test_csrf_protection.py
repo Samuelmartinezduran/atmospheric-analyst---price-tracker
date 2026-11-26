@@ -50,4 +50,3 @@ def test_is_valid_csrf_pair_requires_non_empty_equal_values() -> None:
     assert is_valid_csrf_pair("abc", "") is False
     assert is_valid_csrf_pair(None, "abc") is False
     assert is_valid_csrf_pair("abc", None) is False
-
