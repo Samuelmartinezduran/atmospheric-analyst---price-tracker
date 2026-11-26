@@ -1,0 +1,17 @@
+---
+import ForgotForm from '../islands/ForgotForm';
+import AuthLayout from '../layouts/AuthLayout.astro';
+---
+
+<AuthLayout title="Recuperar la contraseña">
+  <ForgotForm client:only="react">
+    <div slot="fallback" class="panel" role="status">
+      <span class="sk line" style="width: 55%; height: 20px"></span>
+      <span class="sk line" style="width: 85%; margin-top: 14px"></span>
+      <span class="sk" style="height: 40px; margin-top: 24px; border-radius: 6px"></span>
+      <span class="sk" style="height: 40px; margin-top: 16px; border-radius: 6px"></span>
+      <span class="sr-only">Cargando…</span>
+    </div>
+  </ForgotForm>
+  <p class="auth-foot">¿Te has acordado? <a href="/entrar">Vuelve a entrar</a></p>
+</AuthLayout>

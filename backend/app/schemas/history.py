@@ -9,7 +9,6 @@ class PriceHistoryResponse(BaseModel):
 
     id: int
     product_id: int
-    title_snapshot: str | None
     price: Decimal | None
     currency: str
     status: str

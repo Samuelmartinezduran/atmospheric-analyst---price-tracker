@@ -1,0 +1,2 @@
+// Tema antes de pintar (síncrono en <head>; no va en línea por la CSP). Se reaplica en cada navegación de ClientRouter.
+(function(){function t(){try{var v=localStorage.getItem('theme');if(v==='light'||v==='dark'||v==='system')return v;v=localStorage.getItem('darkMode');if(v==='true')return'dark';if(v==='false')return'light'}catch(e){}return'system'}function a(d){var r=(d||document).documentElement,v=t();if(v==='system')r.removeAttribute('data-theme');else r.setAttribute('data-theme',v)}a();document.addEventListener('astro:before-swap',function(e){a(e.newDocument)})})();

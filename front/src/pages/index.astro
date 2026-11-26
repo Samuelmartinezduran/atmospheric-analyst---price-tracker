@@ -1,0 +1,13 @@
+---
+import ProductsPage from '../islands/ProductsPage';
+import {PageSkeleton} from '../components/skeletons';
+import AppLayout from '../layouts/AppLayout.astro';
+---
+
+<AppLayout title="Productos" section="productos">
+  <ProductsPage client:only="react">
+    <div slot="fallback" style="display: contents">
+      <PageSkeleton crumb="Todos los productos" title="Resumen" variant="dash" />
+    </div>
+  </ProductsPage>
+</AppLayout>

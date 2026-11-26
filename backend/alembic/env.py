@@ -1,15 +1,17 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.db.models  # noqa: F401
+from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
-import app.db.models  # noqa: F401
 
 config = context.config
 
-if config.config_file_name is not None:
+# Cuando las migraciones las lanza la app (init_db), el logging ya está configurado:
+# fileConfig lo machacaría y dejaría mudos a uvicorn y al worker.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 settings = get_settings()

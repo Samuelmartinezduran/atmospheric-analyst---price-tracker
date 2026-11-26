@@ -1,114 +1,246 @@
-import React from 'react';
-import {
-  LayoutDashboard,
-  Package,
-  Bell,
-  Settings,
-  Plus,
-  LifeBuoy,
-  LogOut,
-  LogIn,
-  LineChart,
-} from 'lucide-react';
-import {cn} from '../lib/utils';
+/**
+ * Barra lateral (escritorio) y menú desplegable (móvil).
+ *
+ * `SidebarFrame` es solo presentación: Astro lo pinta en el HTML estático como esqueleto
+ * mientras carga la isla. `Sidebar` es la isla: persiste entre páginas (`transition:persist`),
+ * así que el menú, la insignia y los avisos no parpadean al navegar.
+ */
+import {useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import type {User} from '../api/types';
+import {ALERTS_SEEN_EVENT, countNewAlerts, getAlertsSeenAt} from '../lib/alertsSeen';
+import {avatarGradient} from '../lib/avatar';
+import {useAlerts} from '../lib/data';
+import {navigate} from '../lib/nav';
+import {signOut, useSession} from '../lib/session';
+import {IconBell, IconClose, IconCog, IconGrid, IconLogout, IconMenu, IconPulse, IconSearch, IconShield} from './icons';
+import {Toaster} from './ui';
 
-export type SidebarPage = 'dashboard' | 'alerts' | 'settings';
+export type Section = 'productos' | 'lecturas' | 'alertas' | 'admin' | 'ajustes' | '';
 
-interface SidebarProps {
-  userEmail?: string | null;
-  isAuthenticated?: boolean;
-  activePage?: SidebarPage;
-  alertsBadge?: number;
-  onNavigate?: (page: SidebarPage) => void;
-  onHelp?: () => void;
-  onShowLogin?: () => void;
-  onLogout?: () => void;
+const ITEMS: {id: Section; href: string; label: string; icon: ReactNode; adminOnly?: boolean}[] = [
+  {id: 'productos', href: '/', label: 'Productos', icon: <IconGrid />},
+  {id: 'lecturas', href: '/lecturas', label: 'Lecturas', icon: <IconPulse />},
+  {id: 'alertas', href: '/alertas', label: 'Alertas', icon: <IconBell />},
+  {id: 'admin', href: '/admin', label: 'Administración', icon: <IconShield />, adminOnly: true},
+  {id: 'ajustes', href: '/ajustes', label: 'Ajustes', icon: <IconCog />},
+];
+
+export function sectionFor(pathname: string): Section {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  if (path === '/' || path === '/producto') return 'productos';
+  if (path === '/lecturas') return 'lecturas';
+  if (path === '/alertas') return 'alertas';
+  if (path === '/admin') return 'admin';
+  if (path === '/ajustes') return 'ajustes';
+  return '';
 }
 
-export function Sidebar({userEmail, isAuthenticated, activePage = 'dashboard', alertsBadge, onNavigate, onHelp, onShowLogin, onLogout}: SidebarProps) {
-  const navItems: {icon: React.ElementType; label: string; page: SidebarPage; badge?: number}[] = [
-    {icon: LayoutDashboard, label: 'Dashboard', page: 'dashboard'},
-    {icon: Package, label: 'Tracked Products', page: 'dashboard'},
-    {icon: Bell, label: 'Alerts', page: 'alerts', badge: alertsBadge},
-    {icon: Settings, label: 'Settings', page: 'settings'},
-  ];
+interface FrameProps {
+  current: Section;
+  user?: User;
+  newAlerts?: number;
+  onFind?: () => void;
+  onSignOut?: () => void;
+  menuOpen?: boolean;
+  onToggleMenu?: () => void;
+}
+
+function Brand() {
+  return (
+    <a className="sb-team" href="/">
+      <span className="mark" aria-hidden="true" />
+      <span className="name">Lowmark</span>
+    </a>
+  );
+}
+
+/** Fila de cuenta: avatar con degradado del email, el email y «Admin» si lo es. */
+function AccountRow({user}: {user?: User}) {
+  return (
+    <div className="sb-acct">
+      {user ? (
+        <>
+          <span className="avatar sm" aria-hidden="true" style={{background: avatarGradient(user.email)}} />
+          <span className="email" title={user.email}>
+            {user.email}
+          </span>
+          {user.is_admin && <span className="badge">Admin</span>}
+        </>
+      ) : (
+        <>
+          <span className="avatar sm sk" aria-hidden="true" />
+          <span className="sk line" style={{flex: 1}} aria-hidden="true" />
+        </>
+      )}
+    </div>
+  );
+}
+
+function Menu({current, user, newAlerts = 0, onFind, idPrefix}: FrameProps & {idPrefix: string}) {
+  return (
+    <>
+      <button type="button" className="sb-find" onClick={onFind} aria-keyshortcuts="F">
+        <IconSearch />
+        Buscar
+        <span className="kbd" aria-hidden="true">
+          F
+        </span>
+      </button>
+      <nav aria-label="Secciones" id={`${idPrefix}-nav`}>
+        <ul className="menu">
+          {ITEMS.filter((item) => !item.adminOnly || user?.is_admin).flatMap((item) => {
+            const link = (
+              <li key={item.id}>
+                <a href={item.href} aria-current={current === item.id ? 'page' : undefined}>
+                  {item.icon}
+                  {item.label}
+                  {item.id === 'alertas' && newAlerts > 0 && (
+                    <span className="count">
+                      {newAlerts > 99 ? '99+' : newAlerts}
+                      <span className="sr-only"> nuevas</span>
+                    </span>
+                  )}
+                </a>
+              </li>
+            );
+            return item.id === 'ajustes' ? [<li key="grp" className="grp" aria-hidden="true" />, link] : [link];
+          })}
+        </ul>
+      </nav>
+    </>
+  );
+}
+
+function SignOut({user, onSignOut}: {user?: User; onSignOut?: () => void}) {
+  return (
+    <div className="sb-me">
+      <span className="email" title={user?.email}>
+        {user ? user.email : <span className="sk line" aria-hidden="true" />}
+      </span>
+      <button type="button" className="link-btn" onClick={onSignOut} disabled={!user}>
+        <IconLogout />
+        Cerrar sesión
+      </button>
+    </div>
+  );
+}
+
+export function SidebarFrame(props: FrameProps) {
+  const {user, menuOpen, onToggleMenu} = props;
+  return (
+    <>
+      <aside className="sb" aria-label="Navegación">
+        <div>
+          <Brand />
+          <AccountRow user={user} />
+        </div>
+        <Menu {...props} idPrefix="sb" />
+        <SignOut user={user} onSignOut={props.onSignOut} />
+      </aside>
+      <div className="mbar">
+        <div className="mbar-row">
+          <a className="mbar-brand" href="/">
+            <span className="mark" aria-hidden="true" />
+            <span className="name">Lowmark</span>
+          </a>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-expanded={menuOpen ? 'true' : 'false'}
+            aria-controls="mbar-menu"
+            aria-label={menuOpen ? 'Cerrar el menú' : 'Abrir el menú'}
+            onClick={onToggleMenu}
+          >
+            {menuOpen ? <IconClose /> : <IconMenu />}
+          </button>
+        </div>
+        <div id="mbar-menu" className="mbar-menu" hidden={!menuOpen}>
+          <AccountRow user={user} />
+          <Menu {...props} idPrefix="mb" />
+          <SignOut user={user} onSignOut={props.onSignOut} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// La insignia cuenta las alertas posteriores a la última visita a /alertas (lib/alertsSeen).
+const SEEN_EVENT = ALERTS_SEEN_EVENT;
+const subscribeSeen = (listener: () => void) => {
+  window.addEventListener(SEEN_EVENT, listener);
+  window.addEventListener('storage', listener);
+  return () => {
+    window.removeEventListener(SEEN_EVENT, listener);
+    window.removeEventListener('storage', listener);
+  };
+};
+
+/** Enfoca el buscador de productos si está en la página; si no, va a `/?q=`. */
+export function focusProductSearch(): void {
+  const input = document.getElementById('product-search') as HTMLInputElement | null;
+  if (input) {
+    input.focus();
+    input.select();
+  } else {
+    void navigate('/?q=');
+  }
+}
+
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
+export default function Sidebar() {
+  const {user} = useSession();
+  const alerts = useAlerts(Boolean(user));
+  const seenAt = useSyncExternalStore(subscribeSeen, getAlertsSeenAt, () => 0);
+  const [current, setCurrent] = useState<Section>(() => sectionFor(window.location.pathname));
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // La isla persiste entre páginas: la sección activa se lee de la URL tras cada navegación.
+  useEffect(() => {
+    const update = () => {
+      setCurrent(sectionFor(window.location.pathname));
+      setMenuOpen(false);
+    };
+    document.addEventListener('astro:page-load', update);
+    return () => document.removeEventListener('astro:page-load', update);
+  }, []);
+
+  // Atajo F: buscar productos.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
+      if (document.querySelector('dialog[open]')) return;
+      if (event.key === 'f' || event.key === 'F') {
+        event.preventDefault();
+        focusProductSearch();
+      } else if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const newAlerts = alerts.data ? countNewAlerts(alerts.data, seenAt) : 0;
 
   return (
-    <aside className="w-64 h-screen fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant/10 flex flex-col p-6 font-manrope">
-      <div className="flex items-center gap-3 mb-10 px-2">
-        <div className="w-10 h-10 rounded-xl primary-gradient flex items-center justify-center text-white shadow-lg">
-          <LineChart size={24} />
-        </div>
-        <div>
-          <h1 className="text-lg font-extrabold text-primary tracking-tight">Atmospheric Analyst</h1>
-          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Premium SaaS</p>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-2">
-        {navItems.map((item) => {
-          const isActive = item.page === activePage;
-          return (
-            <button
-              key={item.label}
-              onClick={() => onNavigate?.(item.page)}
-              className={cn(
-                'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-semibold',
-                isActive
-                  ? 'bg-surface-container-lowest text-primary shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
-              )}
-            >
-              <item.icon size={20} />
-              <span className="flex-1 text-left">{item.label}</span>
-              {item.badge != null && item.badge > 0 && (
-                <span className="ml-auto bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="mt-auto space-y-4">
-        <button className="w-full primary-gradient text-white font-bold py-3 rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95">
-          <Plus size={18} />
-          <span>Add New Product</span>
-        </button>
-
-        <div className="pt-4 border-t border-outline-variant/10 space-y-1">
-          {isAuthenticated && userEmail && (
-            <div className="px-4 py-2 text-xs font-semibold text-on-surface-variant truncate">
-              {userEmail}
-            </div>
-          )}
-          <button
-            onClick={onHelp}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all"
-          >
-            <LifeBuoy size={20} />
-            <span>Help Center</span>
-          </button>
-          {isAuthenticated ? (
-            <button
-              onClick={onLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all"
-            >
-              <LogOut size={20} />
-              <span>Logout</span>
-            </button>
-          ) : (
-            <button
-              onClick={onShowLogin}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-primary hover:bg-primary/10 transition-all"
-            >
-              <LogIn size={20} />
-              <span>Iniciar sesión</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </aside>
+    <>
+      <SidebarFrame
+        current={current}
+        user={user}
+        newAlerts={current === 'alertas' ? 0 : newAlerts}
+        onFind={() => {
+          setMenuOpen(false);
+          focusProductSearch();
+        }}
+        onSignOut={() => void signOut()}
+        menuOpen={menuOpen}
+        onToggleMenu={() => setMenuOpen((open) => !open)}
+      />
+      <Toaster />
+    </>
   );
 }

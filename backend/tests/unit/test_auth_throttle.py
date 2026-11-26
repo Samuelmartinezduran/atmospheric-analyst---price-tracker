@@ -11,8 +11,8 @@ from app.services.auth_throttle import (
     check_login_rate_limit,
     check_recovery_rate_limit,
     clear_login_failures,
-    register_recovery_attempt,
     register_login_failure,
+    register_recovery_attempt,
 )
 
 settings = get_settings()

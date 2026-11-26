@@ -42,6 +42,7 @@ class AuthUserResponse(BaseModel):
     email: EmailStr
     is_email_verified: bool
     is_active: bool
+    is_admin: bool = False
     created_at: datetime
 
 

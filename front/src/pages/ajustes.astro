@@ -1,0 +1,13 @@
+---
+import SettingsPage from '../islands/SettingsPage';
+import {PageSkeleton} from '../components/skeletons';
+import AppLayout from '../layouts/AppLayout.astro';
+---
+
+<AppLayout title="Ajustes" section="ajustes">
+  <SettingsPage client:only="react">
+    <div slot="fallback" style="display: contents">
+      <PageSkeleton crumb="Tu cuenta" title="Ajustes" variant="settings" narrow />
+    </div>
+  </SettingsPage>
+</AppLayout>

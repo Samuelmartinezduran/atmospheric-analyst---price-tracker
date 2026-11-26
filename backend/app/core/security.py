@@ -1,13 +1,13 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError
+from argon2.exceptions import VerificationError, VerifyMismatchError
 
-from app.core.config import get_settings
+from app.core.config import MIN_SECRET_LENGTH, get_settings
 
 settings = get_settings()
 password_hasher = PasswordHasher()
@@ -16,6 +16,7 @@ ACCESS_COOKIE_NAME = "access_token"
 REFRESH_COOKIE_NAME = "refresh_token"
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
+JWT_ALGORITHM = "HS256"
 
 
 def normalize_email(email: str) -> str:
@@ -51,6 +52,14 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _jwt_secret() -> str:
+    # Defensa en profundidad: nunca firmar ni verificar con un secreto vacío o corto.
+    secret = settings.auth_jwt_secret.strip()
+    if len(secret) < MIN_SECRET_LENGTH:
+        raise RuntimeError("AUTH_JWT_SECRET no está configurado o es demasiado corto.")
+    return secret
+
+
 def create_access_token(user_id: int, session_id: int) -> tuple[str, datetime]:
     issued_at = _now_utc()
     expires_at = issued_at + timedelta(minutes=settings.auth_access_token_ttl_minutes)
@@ -61,15 +70,15 @@ def create_access_token(user_id: int, session_id: int) -> tuple[str, datetime]:
         "iat": int(issued_at.timestamp()),
         "exp": int(expires_at.timestamp()),
     }
-    token = jwt.encode(payload, settings.auth_jwt_secret, algorithm=settings.auth_jwt_algorithm)
+    token = jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
     return token, expires_at
 
 
 def decode_access_token(access_token: str) -> dict[str, Any]:
     payload = jwt.decode(
         access_token,
-        settings.auth_jwt_secret,
-        algorithms=[settings.auth_jwt_algorithm],
+        _jwt_secret(),
+        algorithms=[JWT_ALGORITHM],
     )
     if payload.get("typ") != "access":
         raise jwt.InvalidTokenError("Tipo de token invalido.")
@@ -91,10 +100,3 @@ def password_reset_expiration() -> datetime:
 def cookie_max_age_seconds(expires_at: datetime) -> int:
     delta = expires_at - _now_utc()
     return max(1, int(delta.total_seconds()))
-
-
-def cookie_samesite_value() -> str:
-    raw = settings.auth_cookie_samesite.strip().lower()
-    if raw in {"lax", "strict", "none"}:
-        return raw
-    return "lax"

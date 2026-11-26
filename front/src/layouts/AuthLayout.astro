@@ -1,0 +1,22 @@
+---
+/** Pantallas de cuenta: una tarjeta centrada y sobria. */
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+}
+
+const {title} = Astro.props;
+---
+
+<BaseLayout title={title}>
+  <main class="auth">
+    <div class="auth-card">
+      <a class="auth-brand" href="/entrar">
+        <span class="mark lg" aria-hidden="true"></span>
+        Lowmark
+      </a>
+      <slot />
+    </div>
+  </main>
+</BaseLayout>

@@ -1,0 +1,17 @@
+---
+import RegisterForm from '../islands/RegisterForm';
+import AuthLayout from '../layouts/AuthLayout.astro';
+---
+
+<AuthLayout title="Crear una cuenta">
+  <RegisterForm client:only="react">
+    <div slot="fallback" class="panel" role="status">
+      <span class="sk line" style="width: 55%; height: 20px"></span>
+      <span class="sk line" style="width: 85%; margin-top: 14px"></span>
+      <span class="sk" style="height: 40px; margin-top: 24px; border-radius: 6px"></span>
+      <span class="sk" style="height: 40px; margin-top: 16px; border-radius: 6px"></span>
+      <span class="sr-only">Cargando…</span>
+    </div>
+  </RegisterForm>
+  <p class="auth-foot">¿Ya tienes cuenta? <a href="/entrar">Entra</a></p>
+</AuthLayout>

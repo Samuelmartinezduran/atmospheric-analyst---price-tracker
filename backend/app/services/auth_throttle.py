@@ -88,7 +88,9 @@ def _build_decision(
 
     remaining = max(0, max_attempts - attempt.failure_count)
     if attempt.failure_count >= max_attempts:
-        retry_after = max(1, int((_window_end(attempt.window_started_at, window_minutes) - current_utc).total_seconds()))
+        retry_after = max(
+            1, int((_window_end(attempt.window_started_at, window_minutes) - current_utc).total_seconds())
+        )
         return ThrottleDecision(allowed=False, retry_after_seconds=retry_after, attempts_left=0)
 
     return ThrottleDecision(allowed=True, retry_after_seconds=0, attempts_left=remaining)

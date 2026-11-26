@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.base import Base
 from app.services.auth_service import (
     register_user,
-    resend_email_verification,
     request_password_reset,
+    resend_email_verification,
     verify_email,
 )
 

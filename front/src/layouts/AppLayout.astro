@@ -1,0 +1,26 @@
+---
+/** Marco de las páginas con sesión: barra lateral persistente y columna principal. */
+import Sidebar, {SidebarFrame, type Section} from '../components/Sidebar';
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  section: Section;
+}
+
+const {title, section} = Astro.props;
+---
+
+<BaseLayout title={title}>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <div class="app">
+    <Sidebar client:only="react" transition:persist="sidebar">
+      <div slot="fallback" style="display: contents">
+        <SidebarFrame current={section} />
+      </div>
+    </Sidebar>
+    <main id="main" class="main" tabindex="-1">
+      <slot />
+    </main>
+  </div>
+</BaseLayout>
