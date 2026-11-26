@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -63,6 +64,8 @@ def create_app(run_lifespan: bool = True) -> FastAPI:
         openapi_url="/api/openapi.json" if settings.is_dev else None,
     )
     app.add_middleware(SecurityHeadersMiddleware)
+    # El JS y el CSS del frontend pasan de ~440 KB a ~130 KB por la red.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.include_router(api_router)
     if settings.frontend_dist_dir.strip():
         _mount_frontend(app, Path(settings.frontend_dist_dir))

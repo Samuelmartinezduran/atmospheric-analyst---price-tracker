@@ -124,6 +124,22 @@ Tras cargar la página también se comprueba que el host final (después de redi
 
 ---
 
+## D12. El frontend pasa a Astro (sustituye a D11 en cuanto al framework)
+
+**Decisión:** reescribir el frontend en Astro, con salida estática que sigue sirviendo FastAPI (D3), e islas de React solo donde hay interacción: formulario de alta, gráfica, botones de comprobar, ajustes.
+
+**Por qué:**
+- Es el framework del portfolio (samuelmartinez.dev, Astro 7): misma forma de trabajar y la posibilidad de compartir tokens de diseño.
+- Encaja con la arquitectura de un solo origen: el resultado son ficheros estáticos. Next.js brilla con su servidor Node (SSR, server actions, rutas de API), que aquí sería un cuarto servicio que mantener; en exportación estática pierde justo eso.
+- La app se quejaba de lenta: Astro manda JavaScript solo a las islas, y la gráfica pasa a SVG propio en lugar de Recharts (416 KB).
+- Las islas en React permiten aprovechar el cliente de API, el contexto de sesión y sus tests.
+
+**Descartado:** Next.js (ver arriba), SvelteKit (otro lenguaje de plantillas fuera del stack habitual), seguir con la SPA de Vite tal cual (no arregla el peso ni la coherencia con el portfolio).
+
+**Velocidad, arreglado aparte del framework (26/11/2026):** la app se publica también en IPv6 (`[::1]`). En Windows, `localhost` se resuelve primero como `::1` y cada conexión perdía ~200 ms antes de caer a IPv4 (medido: 208 ms frente a 3 ms). Además, FastAPI comprime las respuestas con gzip.
+
+---
+
 ## D11. Frontend: React + Vite se quedan; se limpia la plantilla
 
 - Se quitan los restos de la plantilla de Google AI Studio (`@google/genai`, `express`, `dotenv`, `tsx`, la inyección de `GEMINI_API_KEY`, `metadata.json`).

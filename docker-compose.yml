@@ -38,8 +38,11 @@ services:
     build:
       context: .
       target: runtime
+    # También en IPv6: Windows resuelve «localhost» primero como ::1 y, si nadie escucha ahí,
+    # cada conexión pierde ~200 ms antes de probar 127.0.0.1.
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_HOST_PORT:-8001}:8000"
+      - "${APP_BIND6:-[::1]}:${APP_HOST_PORT:-8001}:8000"
 
   worker:
     <<: *app
