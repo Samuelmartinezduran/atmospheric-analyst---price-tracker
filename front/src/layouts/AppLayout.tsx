@@ -100,6 +100,7 @@ export function AppLayout() {
 
   const sidebarProps = {
     userEmail: user?.email ?? null,
+    isAdmin: user?.is_admin ?? false,
     alertsBadge: newAlerts,
     onAddProduct: handleAddProduct,
     onHelp: () => {

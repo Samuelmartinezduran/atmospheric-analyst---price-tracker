@@ -34,6 +34,7 @@ Todo pasa por Docker; no hace falta Python, Rust ni Postgres en el PC.
 docker compose up -d --build            # db + web (http://localhost:8001) + worker
 docker compose logs -f worker           # ver las rondas de comprobación
 docker compose run --rm worker python -m app.worker --once   # una ronda a mano
+docker compose exec web python -m app.cli crear-admin tu@email.com   # rol de administrador
 
 # Tests y lint del backend (la build ejecuta también `cargo test` del crate)
 docker build --target test -t atmospheric-analyst:test .

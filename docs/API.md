@@ -27,7 +27,7 @@ Todo cuelga de `/api` en el mismo origen que el frontend (ver D3 en `DECISIONES.
 | GET | `/sessions` | — | 200 `{sessions: Session[]}` (solo las no revocadas) |
 | POST | `/sessions/revoke-others` | — | 200 `{message, revoked_count}` |
 
-`User`: `{id, email, is_email_verified, is_active, created_at}`
+`User`: `{id, email, is_email_verified, is_active, is_admin, created_at}`
 `Session`: `{id, ip_address, user_agent, expires_at, revoked_at, created_at, is_current}`
 
 El único 403 posible en `/login` es «email sin verificar»: la comprobación CSRF solo se aplica con sesión abierta. Los 429 traen `Retry-After` en segundos. `debug_token` es `null` fuera de `dev`.
@@ -89,6 +89,15 @@ Los emails llevan enlaces a `/verificar?token=…` y `/restablecer?token=…`.
 `GET /api/alerts` → `Alert[]` (más recientes primero, máximo 200)
 
 `Alert`: `{id, product_id, product_title, product_url, desired_price, triggered_price, currency, status, attempts, error_message, triggered_at, sent_at}` con `status` ∈ `pending | sent | failed`.
+
+## Administración — `/api/admin` (solo `is_admin`; 403 para el resto)
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/overview` | `{totals, last_check_at, email_enabled, check_interval_minutes, users}`: totales de cuentas, productos, lecturas de las últimas 24 h y alertas por estado; y por cuenta, sus productos y su último acceso. |
+| DELETE | `/users/{id}` | 204 (borra la cuenta y, en cascada, sus productos, historial, alertas y sesiones) · 400 si es tu propia cuenta · 404 |
+
+El rol no se concede desde la API: `docker compose exec web python -m app.cli crear-admin tu@email.com`.
 
 ## Salud
 

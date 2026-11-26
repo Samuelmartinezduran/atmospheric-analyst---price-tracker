@@ -1,11 +1,12 @@
 import {Component, type ReactNode} from 'react';
 import {BrowserRouter, Navigate, Route, Routes, useLocation} from 'react-router';
 import {AuthProvider} from './auth/AuthContext';
-import {PublicOnly, RequireAuth} from './auth/guards';
+import {PublicOnly, RequireAdmin, RequireAuth} from './auth/guards';
 import {ToastProvider} from './components/Toasts';
 import {AppLayout} from './layouts/AppLayout';
 import {getLegacyRedirect} from './lib/legacyRedirect';
 import {ThemeProvider} from './lib/theme';
+import {AdminPage} from './pages/AdminPage';
 import {AlertsPage} from './pages/AlertsPage';
 import {DashboardPage} from './pages/DashboardPage';
 import {ForgotPasswordPage} from './pages/ForgotPasswordPage';
@@ -71,6 +72,9 @@ export function AppRoutes() {
           </Route>
           <Route path="alertas" element={<AlertsPage />} />
           <Route path="ajustes" element={<SettingsPage />} />
+          <Route element={<RequireAdmin />}>
+            <Route path="admin" element={<AdminPage />} />
+          </Route>
         </Route>
       </Route>
 

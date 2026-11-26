@@ -40,7 +40,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Abre <http://localhost:8001> y crea una cuenta. Sin correo configurado (`EMAIL_ENABLED=false`) y con `APP_ENV=dev`, el token de verificación aparece en la propia pantalla.
+Abre <http://localhost:8001> y crea una cuenta. Para tener el panel de administración (estado del worker, cuentas registradas), da el rol a tu cuenta (o créala) con `docker compose exec web python -m app.cli crear-admin tu@email.com`; si no indicas `--password`, genera una contraseña y la muestra una vez. Sin correo configurado (`EMAIL_ENABLED=false`) y con `APP_ENV=dev`, el token de verificación aparece en la propia pantalla.
 
 Para recibir las alertas por email, rellena el bloque `SMTP_*` del `.env` (en Gmail, con una contraseña de aplicación) y pon `EMAIL_ENABLED=true`.
 

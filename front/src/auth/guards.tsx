@@ -30,6 +30,13 @@ export function RequireAuth({children}: {children?: ReactNode}) {
   return children ?? <Outlet />;
 }
 
+/** Solo administradores; el resto vuelve al panel. La API lo comprueba igualmente. */
+export function RequireAdmin({children}: {children?: ReactNode}) {
+  const {user} = useAuth();
+  if (!user?.is_admin) return <Navigate to="/" replace />;
+  return children ?? <Outlet />;
+}
+
 /** Entrar, registro y recuperar: con la sesión abierta no tienen sentido. */
 export function PublicOnly({children}: {children?: ReactNode}) {
   const {status} = useAuth();

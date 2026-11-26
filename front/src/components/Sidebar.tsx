@@ -1,11 +1,12 @@
 import type {ElementType} from 'react';
 import {Link, useLocation} from 'react-router';
-import {Bell, LayoutDashboard, LifeBuoy, LogOut, Plus, Settings} from 'lucide-react';
+import {Bell, LayoutDashboard, LifeBuoy, LogOut, Plus, Settings, ShieldCheck} from 'lucide-react';
 import {cn} from '../lib/utils';
 import {Brand} from './Brand';
 
 interface SidebarProps {
   userEmail: string | null;
+  isAdmin?: boolean;
   alertsBadge: number;
   onAddProduct: () => void;
   onHelp: () => void;
@@ -22,7 +23,7 @@ interface NavItem {
   badge?: number;
 }
 
-export function Sidebar({userEmail, alertsBadge, onAddProduct, onHelp, onLogout, onNavigate, className}: SidebarProps) {
+export function Sidebar({userEmail, isAdmin = false, alertsBadge, onAddProduct, onHelp, onLogout, onNavigate, className}: SidebarProps) {
   const {pathname} = useLocation();
   const items: NavItem[] = [
     {
@@ -39,6 +40,9 @@ export function Sidebar({userEmail, alertsBadge, onAddProduct, onHelp, onLogout,
       badge: alertsBadge,
     },
     {icon: Settings, label: 'Ajustes', to: '/ajustes', isActive: (path) => path.startsWith('/ajustes')},
+    ...(isAdmin
+      ? [{icon: ShieldCheck, label: 'Administración', to: '/admin', isActive: (path: string) => path.startsWith('/admin')}]
+      : []),
   ];
 
   const secondaryItem =
