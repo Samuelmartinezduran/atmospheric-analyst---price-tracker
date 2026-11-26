@@ -76,3 +76,36 @@ Revisión completa del MVP de marzo-abril de 2026 (el primer proyecto de Samuel)
 - **PCComponentes sin navegador.** Medir si responde a `httpx` con el JSON-LD; sería diez veces más rápido (D5).
 - **Usuarios de prueba.** La base de datos migrada tiene 12 cuentas `@example.com` de las pruebas de marzo. No molestan; se pueden borrar.
 - **La cuenta del «usuario por defecto».** Cuatro productos pertenecen a la cuenta que se creó sin contraseña cuando la app no exigía login. Para entrar: «¿Has olvidado tu contraseña?» con ese email.
+
+---
+
+## Segunda ronda: revisión independiente del backend nuevo
+
+Después de reescribir el backend, un revisor que no había participado en el código lo revisó buscando fallos, y reprodujo cada hallazgo con scripts contra SQLite y contra un Postgres temporal. Encontró problemas reales en la reescritura; todos están corregidos en el segundo commit y tienen su test.
+
+| Gravedad | Hallazgo | Arreglo |
+|---|---|---|
+| Alta | La plantilla `.env.example` dejaba `AUTH_JWT_SECRET` vacío y los tokens de depuración activados. Un JWT firmado con la clave `""` se aceptaba, y los `sid` son correlativos, así que se podían fabricar sesiones. | El secreto es obligatorio siempre (≥ 32 caracteres) y también se comprueba al firmar y verificar. Los tokens de depuración exigen `dev` **y** el correo desactivado, y la plantilla los trae apagados. |
+| Media | Quien registraba primero un email ajeno dejaba puesta su contraseña; al verificar, la víctima activaba la del atacante. | Un registro sobre una cuenta sin verificar sustituye la contraseña y anula los enlaces anteriores. |
+| Media | El worker abría las URLs guardadas sin revalidarlas, y la 0004 conservaba las que el código antiguo había aceptado. | Se revalida antes de cada lectura (si no pasa, el producto se desactiva) y la migración 0005 desactiva las existentes. |
+| Media | `/register` revelaba por tiempo si una cuenta existía (63 ms frente a 5 ms) y no tenía límite de intentos. | El hash se calcula siempre, hay límite por conexión y los correos de cuenta se envían en segundo plano. |
+| Media | Las comprobaciones manuales abrían un Chromium por petición sin límite: unas 15 peticiones agotaban las conexiones a la base de datos. | Máximo 2 a la vez (429 con `Retry-After`); el alta de un producto deja la primera lectura al worker si está ocupado. |
+| Baja | El parser de Rust aceptaba espacios en cualquier posición: «649 99 €» daba 64.999 €. | Los espacios solo valen como separador de miles. Hay un test de propiedad nuevo. |
+| Baja | Un precio JSON-LD con forma de objeto lanzaba `TypeError` y hacía fallar la página. | Se rechaza como precio no válido y se prueba la siguiente fuente. |
+| Baja | Un PATCH del objetivo o un DELETE durante una comprobación generaban una alerta incoherente o abortaban la ronda entera. | PATCH y DELETE toman el bloqueo (409 si está ocupado), y un fallo inesperado en un producto ya no corta la ronda. |
+| Baja | Migración 0004: URLs sin esquema, `/exec/obidos/asin/` y URLs de casi 2048 caracteres. | Corregido, con tests de las funciones de la migración. |
+| Baja | La comprobación del host final se hacía después de que Chromium siguiera las redirecciones. | Las navegaciones a hosts ajenos se cortan antes de hacer la petición. |
+| Baja | Con el correo desactivado, las alertas se acumulaban y se enviaban todas de golpe al activarlo. | Caducan a las 48 horas. |
+| Baja | Alembic (`fileConfig`) silenciaba los logs de uvicorn y del worker, y el worker heredaba un healthcheck HTTP que nunca pasaría. | Corregido. |
+
+**Sin corregir:** el límite de intentos de login es por `IP + email`. No frena a quien pruebe una contraseña contra muchas cuentas ni a quien vaya cambiando de IP, y detrás de la NAT de Docker Desktop todas las peticiones comparten IP, así que alguien podría bloquear el acceso de un usuario concreto. Con la app escuchando solo en `127.0.0.1` no es explotable; si se publica, conviene añadir un límite global por cuenta y un proxy con la IP real (`TRUST_PROXY_HEADERS`).
+
+**Comprobado sin fallos:** el servido de la SPA (path traversal), el bloqueo consultivo contra comprobaciones dobles, el CSRF, y el desbordamiento y el redondeo del parser.
+
+## Verificación final (26/11/2026)
+
+- **Backend:** 158 tests de Python y 13 de Rust (incluidos los de propiedades); `ruff check` y `ruff format` limpios.
+- **Frontend:** `tsc` con 0 errores, 44 tests, build correcto y `npm audit` a 0.
+- **Datos reales:** migración probada sobre una copia de la base de datos de marzo-abril: 7 productos, 204 puntos de historial y 14 usuarios, ninguno perdido.
+- **De punta a punta, contra el stack real en Docker:** registro, verificación, login, alta de un producto de PCComponentes con lectura real (≈3 s), detalle, alertas, ajustes, versión móvil sin scroll horizontal y redirección de los enlaces antiguos.
+- **Scrapers en vivo:** las dos tiendas responden con una sola sesión de navegador (~10 s para tres productos).
